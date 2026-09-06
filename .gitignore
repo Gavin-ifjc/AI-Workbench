@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# 本地依赖锁(node环境产物,云端用bun.lock)
+package-lock.json
