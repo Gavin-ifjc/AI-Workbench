@@ -95,6 +95,56 @@ export default function App() {
   const [openClawPath, setOpenClawPath] = useState<string>('~/.openclaw');
   const [autoHealEnabled, setAutoHealEnabled] = useState<boolean>(false);
 
+  // SQLite Persistence Status
+  const [dbStats, setDbStats] = useState<{
+    engine: string;
+    dbPath: string;
+    sizeKb: number;
+    journalMode: string;
+    tableCounts: {
+      services: number;
+      emailNotifications: number;
+      workflows: number;
+      auditLogs: number;
+      healthLogs: number;
+      agentSessionOutbox: number;
+    };
+  } | null>(null);
+
+  const fetchDbStatus = useCallback(() => {
+    fetch('/api/v1/system/db-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.stats) {
+          setDbStats(data.stats);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleResetDatabase = async () => {
+    try {
+      await fetch('/api/v1/system/reset-db', { method: 'POST' });
+      setServices([]);
+      setEmailNotifications([]);
+      setWorkflows([]);
+      setAuditLogs([]);
+      setLogs([]);
+      [
+        'openclaw_emails_v5',
+        'openclaw_services_v5',
+        'openclaw_workflows_v5',
+        'openclaw_audit_logs_v5',
+        'openclaw_health_logs_v5',
+      ].forEach((k) => {
+        try {
+          localStorage.removeItem(k);
+        } catch {}
+      });
+      fetchDbStatus();
+    } catch {}
+  };
+
   // Modals & Drawers
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -108,7 +158,7 @@ export default function App() {
     soundManager.setEnabled(soundEnabled);
   }, [soundEnabled]);
 
-  // Sync initial state from backend
+  // Sync initial state from SQLite backend
   useEffect(() => {
     fetch('/api/v1/services')
       .then((res) => res.json())
@@ -127,9 +177,38 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, []);
 
-  // Local storage persistence
+    fetch('/api/v1/workflows')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.workflows) && data.workflows.length > 0) {
+          setWorkflows(data.workflows);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/v1/audit/logs?limit=50')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.auditLogs) && data.auditLogs.length > 0) {
+          setAuditLogs(data.auditLogs);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/v1/health-logs?limit=50')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.logs) && data.logs.length > 0) {
+          setLogs(data.logs);
+        }
+      })
+      .catch(() => {});
+
+    fetchDbStatus();
+  }, [fetchDbStatus]);
+
+  // Local storage persistence fallback
   useEffect(() => {
     try {
       localStorage.setItem('openclaw_emails_v5', JSON.stringify(emailNotifications));
@@ -406,6 +485,21 @@ export default function App() {
     );
 
     setAuditLogs((prev) => [newAudit, ...prev]);
+
+    // Persist to SQLite backend
+    fetch(`/api/v1/workflows/${workflowId}/step`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stepId,
+        newAgentId,
+        reason: reason || '明确协作环节责任边界',
+        editor: 'Gavin (管理员 / Local Mac)',
+      }),
+    })
+      .then(() => fetchDbStatus())
+      .catch(() => {});
+
     soundManager.playSuccessPip();
   };
 
@@ -437,6 +531,19 @@ export default function App() {
     );
 
     setAuditLogs((prev) => [newAudit, ...prev]);
+
+    // Persist to SQLite backend
+    fetch(`/api/v1/workflows/${workflowId}/rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rule: newRule,
+        editor: 'Gavin (管理员 / Local Mac)',
+      }),
+    })
+      .then(() => fetchDbStatus())
+      .catch(() => {});
+
     soundManager.playSuccessPip();
   };
 
@@ -451,6 +558,13 @@ export default function App() {
         return wf;
       })
     );
+
+    // Persist to SQLite backend
+    fetch(`/api/v1/workflows/${workflowId}/toggle-status`, {
+      method: 'POST',
+    })
+      .then(() => fetchDbStatus())
+      .catch(() => {});
   };
 
   // 王总批复邮件通知，自动引用原邮件并推送到 Agent 聊天 Session 闭环
@@ -546,7 +660,9 @@ export default function App() {
         actionType,
         sentToSessionId: sessionId,
       }),
-    }).catch(() => {});
+    })
+      .then(() => fetchDbStatus())
+      .catch(() => {});
 
     soundManager.playSuccessPip();
   };
@@ -587,7 +703,9 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newRecord),
-    }).catch(() => {});
+    })
+      .then(() => fetchDbStatus())
+      .catch(() => {});
 
     soundManager.playSuccessPip();
   };
@@ -683,6 +801,11 @@ export default function App() {
             </span>
             <span>•</span>
             <span className="text-slate-400">本地路径: {openClawPath}</span>
+            <span>•</span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-medium text-[10px] border border-emerald-200/60">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              SQLite3 存续 (WAL) · {dbStats?.tableCounts ? `${dbStats.tableCounts.services}服务 / ${dbStats.tableCounts.emailNotifications}邮件 / ${dbStats.tableCounts.workflows}台账 / ${dbStats.tableCounts.auditLogs}审计` : '连接正常'}
+            </span>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -721,6 +844,8 @@ export default function App() {
         setOpenClawPath={setOpenClawPath}
         autoHealEnabled={autoHealEnabled}
         setAutoHealEnabled={setAutoHealEnabled}
+        onResetDatabase={handleResetDatabase}
+        dbStats={dbStats}
       />
 
       {/* Export Report Modal */}

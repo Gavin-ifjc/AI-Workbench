@@ -23,30 +23,42 @@ import {
   EmailNotification,
   EmailReplyRecord,
 } from './src/types';
+import {
+  getAllServices,
+  getServiceById,
+  upsertService,
+  deleteService,
+  getAllEmailNotifications,
+  getEmailNotificationById,
+  upsertEmailNotification,
+  addEmailReply,
+  deleteEmailNotification,
+  getAllWorkflows,
+  getWorkflowById,
+  upsertWorkflow,
+  updateWorkflowStepAgent,
+  addWorkflowRule,
+  toggleWorkflowStatus,
+  getAllAuditLogs,
+  insertAuditLog,
+  getAllHealthLogs,
+  insertHealthLog,
+  getAllOutboxMessages,
+  insertOutboxMessage,
+  getDbStats,
+  clearAllData,
+  AgentSessionOutboundMessage,
+} from './server/db';
 
-// In-Memory Repository (Synchronized across API requests & Web UI)
-let services: LocalService[] = [...INITIAL_SERVICES];
-let healthLogs: HealthLogEntry[] = [...INITIAL_HEALTH_LOGS];
+// Persistent Repository (Backed by SQLite3 on local disk in ./data/openclaw_hub.db)
+let services: LocalService[] = getAllServices();
+let healthLogs: HealthLogEntry[] = getAllHealthLogs(100);
 let agents: AgentAsset[] = [...AGENT_LIST];
 let skills: AgentSkill[] = [...INITIAL_SKILLS];
-let workflows: WorkflowRegistryItem[] = [...INITIAL_WORKFLOWS];
-let auditLogs: WorkflowAuditLog[] = [...INITIAL_AUDIT_LOGS];
-let emailNotifications: EmailNotification[] = [...INITIAL_EMAIL_NOTIFICATIONS];
-
-// Outbound closed-loop messages dispatched to Agent chat sessions
-interface AgentSessionOutboundMessage {
-  id: string;
-  emailId: string;
-  emailSubject: string;
-  targetAgent: string;
-  targetSessionId: string;
-  sentAt: string;
-  author: string;
-  directive: string;
-  formattedCitation: string;
-  status: 'delivered' | 'read' | 'pending';
-}
-let agentSessionOutbox: AgentSessionOutboundMessage[] = [];
+let workflows: WorkflowRegistryItem[] = getAllWorkflows();
+let auditLogs: WorkflowAuditLog[] = getAllAuditLogs(100);
+let emailNotifications: EmailNotification[] = getAllEmailNotifications();
+let agentSessionOutbox: AgentSessionOutboundMessage[] = getAllOutboxMessages();
 
 // Store connected external agents telemetry (e.g. 元元 or other agents connecting via API)
 const externalAgentHeartbeats: Record<
@@ -154,6 +166,29 @@ async function startServer() {
     res.json(srv);
   });
 
+  // 注册或更新服务状态 (持久化写入 SQLite)
+  app.post('/api/v1/services', (req, res) => {
+    const srvData: LocalService = req.body;
+    if (!srvData.id || !srvData.name || !srvData.port) {
+      return res.status(400).json({ error: 'id, name, and port are required' });
+    }
+    upsertService(srvData);
+    const idx = services.findIndex((s) => s.id === srvData.id);
+    if (idx >= 0) {
+      services[idx] = srvData;
+    } else {
+      services.push(srvData);
+    }
+    res.status(201).json({ success: true, service: srvData });
+  });
+
+  // 删除服务记录 (持久化从 SQLite 删除)
+  app.delete('/api/v1/services/:id', (req, res) => {
+    deleteService(req.params.id);
+    services = services.filter((s) => s.id !== req.params.id);
+    res.json({ success: true, message: 'Service removed from SQLite' });
+  });
+
   // 真实对服务端口执行探活
   app.post('/api/v1/services/:id/probe', async (req, res) => {
     const srv = services.find((s) => s.id === req.params.id);
@@ -167,6 +202,7 @@ async function startServer() {
         srv.status = 'healthy';
         srv.lastPingMs = 2;
         srv.lastHeartbeat = '刚刚 (本机直探)';
+        upsertService(srv);
         return res.json({ serviceId: srv.id, status: 'healthy', latencyMs: 2, message: '工作台本机存续正常' });
       }
 
@@ -176,6 +212,7 @@ async function startServer() {
         srv.status = 'healthy';
         srv.lastPingMs = probeRes.latencyMs;
         srv.lastHeartbeat = '刚刚 (TCP 探测成功)';
+        upsertService(srv);
         return res.json({
           serviceId: srv.id,
           status: 'healthy',
@@ -187,6 +224,7 @@ async function startServer() {
         srv.status = 'down';
         srv.lastPingMs = 0;
         srv.lastHeartbeat = '探测失败 (连接被拒绝)';
+        upsertService(srv);
         
         // 记录事故日志
         const log: HealthLogEntry = {
@@ -199,6 +237,7 @@ async function startServer() {
           latencyMs: 0,
           lossRisk: srv.isCritical,
         };
+        insertHealthLog(log);
         healthLogs.unshift(log);
         if (healthLogs.length > 100) healthLogs.pop();
 
@@ -214,6 +253,7 @@ async function startServer() {
     } else {
       // 云端服务或其它
       srv.lastHeartbeat = '刚刚 (HTTPS探活)';
+      upsertService(srv);
       return res.json({
         serviceId: srv.id,
         status: srv.status,
@@ -231,6 +271,7 @@ async function startServer() {
           srv.status = 'healthy';
           srv.lastPingMs = 1;
           srv.lastHeartbeat = '常驻 (当前进程)';
+          upsertService(srv);
           continue;
         }
         const probeRes = await probeTcpPort('127.0.0.1', srv.port, 600);
@@ -246,6 +287,7 @@ async function startServer() {
       } else {
         srv.lastHeartbeat = '云端服务通道正常';
       }
+      upsertService(srv);
     }
     res.json({ services, count: services.length });
   });
@@ -260,6 +302,7 @@ async function startServer() {
     srv.uptime = '已下发重启指令';
     srv.lastHeartbeat = '刚刚 (手动拉起)';
     srv.pid = 0;
+    upsertService(srv);
 
     const log: HealthLogEntry = {
       id: `log-${Date.now()}`,
@@ -271,6 +314,7 @@ async function startServer() {
       latencyMs: 2,
       lossRisk: false,
     };
+    insertHealthLog(log);
     healthLogs.unshift(log);
     if (healthLogs.length > 100) healthLogs.pop();
 
@@ -402,6 +446,93 @@ async function startServer() {
     res.json(wf);
   });
 
+  // 创建或更新业务台账 (持久化写入 SQLite)
+  app.post('/api/v1/workflows', (req, res) => {
+    const wfData: WorkflowRegistryItem = req.body;
+    if (!wfData.id || !wfData.code || !wfData.title) {
+      return res.status(400).json({ error: 'id, code, and title are required' });
+    }
+    upsertWorkflow(wfData);
+    const idx = workflows.findIndex((w) => w.id === wfData.id);
+    if (idx >= 0) {
+      workflows[idx] = wfData;
+    } else {
+      workflows.push(wfData);
+    }
+    res.status(201).json({ success: true, workflow: wfData });
+  });
+
+  // 调整业务台账步骤环节责任 Agent (持久化到 SQLite 并记录审计)
+  app.put('/api/v1/workflows/:id/step', (req, res) => {
+    const { stepId, newAgentId, reason, editor } = req.body;
+    if (!stepId || !newAgentId) {
+      return res.status(400).json({ error: 'stepId and newAgentId are required' });
+    }
+    const updatedWf = updateWorkflowStepAgent(req.params.id, stepId, newAgentId);
+    if (!updatedWf) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+    const idx = workflows.findIndex((w) => w.id === req.params.id);
+    if (idx >= 0) workflows[idx] = updatedWf;
+
+    const audit: WorkflowAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toLocaleString(),
+      editor: editor || 'Gavin (管理员 / Local Mac)',
+      action: 'OWNER_CHANGE',
+      targetWorkflowId: req.params.id,
+      summary: `调整台账环节责任 Agent 归属`,
+      diffBefore: 'N/A',
+      diffAfter: `责任人更新为: ${newAgentId}`,
+      reason: reason || '明确协作环节责任边界',
+    };
+    insertAuditLog(audit);
+    auditLogs.unshift(audit);
+
+    res.json({ success: true, workflow: updatedWf, audit });
+  });
+
+  // 新增协作契约准则规则 (持久化到 SQLite 并记录审计)
+  app.post('/api/v1/workflows/:id/rules', (req, res) => {
+    const { rule, editor } = req.body;
+    if (!rule) {
+      return res.status(400).json({ error: 'rule is required' });
+    }
+    const updatedWf = addWorkflowRule(req.params.id, rule);
+    if (!updatedWf) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+    const idx = workflows.findIndex((w) => w.id === req.params.id);
+    if (idx >= 0) workflows[idx] = updatedWf;
+
+    const audit: WorkflowAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toLocaleString(),
+      editor: editor || 'Gavin (管理员 / Local Mac)',
+      action: 'RULE_REVISED',
+      targetWorkflowId: req.params.id,
+      summary: `新增协作准则规则`,
+      diffBefore: '规则库',
+      diffAfter: `新增规则: "${rule}"`,
+      reason: '补充团队人可读协作规范',
+    };
+    insertAuditLog(audit);
+    auditLogs.unshift(audit);
+
+    res.json({ success: true, workflow: updatedWf, audit });
+  });
+
+  // 启停业务台账状态 (持久化到 SQLite)
+  app.post('/api/v1/workflows/:id/toggle-status', (req, res) => {
+    const updatedWf = toggleWorkflowStatus(req.params.id);
+    if (!updatedWf) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+    const idx = workflows.findIndex((w) => w.id === req.params.id);
+    if (idx >= 0) workflows[idx] = updatedWf;
+    res.json({ success: true, workflow: updatedWf });
+  });
+
   app.get('/api/v1/audit/logs', (req, res) => {
     const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
     res.json({
@@ -430,12 +561,13 @@ async function startServer() {
       reason: reason || '日常协作防篡改审计留痕',
     };
 
+    insertAuditLog(newLog);
     auditLogs.unshift(newLog);
 
     res.status(201).json({
       success: true,
       log: newLog,
-      message: 'Audit log successfully recorded',
+      message: 'Audit log successfully recorded in SQLite',
     });
   });
 
@@ -580,9 +712,10 @@ async function startServer() {
     } else {
       emailNotifications.unshift(newRecord);
     }
+    upsertEmailNotification(newRecord);
 
     // Append to health logs
-    healthLogs.unshift({
+    const hLog: HealthLogEntry = {
       id: `log-mail-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
       serviceId: 'srv-mail-probe',
@@ -591,17 +724,26 @@ async function startServer() {
       message: `【邮件通知同步】${newRecord.notificationType} ID: ${newRecord.id} 主题: ${newRecord.subject}`,
       latencyMs: 12,
       lossRisk: false,
-    });
+    };
+    insertHealthLog(hLog);
+    healthLogs.unshift(hLog);
     if (healthLogs.length > 100) healthLogs.pop();
 
     res.status(201).json({
       success: true,
       notification: newRecord,
-      message: 'Email notification synced successfully',
+      message: 'Email notification synced successfully and persisted to SQLite',
     });
   });
 
-  // 王总回复处理意见，自动引用并推送到 Agent 的聊天 session
+  // 删除邮件通知记录 (从 SQLite 删除)
+  app.delete('/api/v1/email-notifications/:id', (req, res) => {
+    deleteEmailNotification(req.params.id);
+    emailNotifications = emailNotifications.filter((e) => e.id !== req.params.id);
+    res.json({ success: true, message: 'Email notification deleted from SQLite' });
+  });
+
+  // 王总回复处理意见，自动引用并推送到 Agent 的聊天 session (持久化到 SQLite)
   app.post('/api/v1/email-notifications/:id/reply', (req, res) => {
     const { id } = req.params;
     const {
@@ -665,7 +807,10 @@ async function startServer() {
       email.archiveStatus = `已建档派单 (责任 Agent: ${agent})`;
     }
 
-    // 放入发往 Agent session 的闭环出箱队列
+    // 持久化保存邮件通知及其批复历史至 SQLite
+    upsertEmailNotification(email);
+
+    // 放入发往 Agent session 的闭环出箱队列并持久化
     const outboxMsg: AgentSessionOutboundMessage = {
       id: `outbox-${Date.now()}`,
       emailId: email.id,
@@ -678,10 +823,11 @@ async function startServer() {
       formattedCitation: citationSnippet,
       status: 'delivered',
     };
+    insertOutboxMessage(outboxMsg);
     agentSessionOutbox.unshift(outboxMsg);
 
-    // 写入工作流与操作审计日志
-    auditLogs.unshift({
+    // 写入工作流与操作审计日志至 SQLite
+    const auditRecord: WorkflowAuditLog = {
       id: `audit-${Date.now()}`,
       timestamp: nowStr,
       editor: author,
@@ -691,10 +837,12 @@ async function startServer() {
       diffBefore: `台账状态: 待处理 | 归档: 暂未归档`,
       diffAfter: `台账状态: ${email.ledgerStatus} | 责任人: ${agent} | 批复: "${content.trim()}"`,
       reason: `王总通过邮件通知大盘给出处理意见，已直接闭环投递至 ${agent} 会话`,
-    });
+    };
+    insertAuditLog(auditRecord);
+    auditLogs.unshift(auditRecord);
 
-    // 记录到健康日志
-    healthLogs.unshift({
+    // 记录到健康日志至 SQLite
+    const healthReplyLog: HealthLogEntry = {
       id: `log-mail-reply-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
       serviceId: 'srv-mail-probe',
@@ -703,12 +851,14 @@ async function startServer() {
       message: `【王总批复闭环】已将邮件 ${email.id} 批示注入 Agent (${agent}) 会话 ${sessionId}`,
       latencyMs: 15,
       lossRisk: false,
-    });
+    };
+    insertHealthLog(healthReplyLog);
+    healthLogs.unshift(healthReplyLog);
     if (healthLogs.length > 100) healthLogs.pop();
 
     res.json({
       success: true,
-      message: `已成功引用邮件通知并发送给 Agent (${agent}) 的聊天 session 闭环`,
+      message: `已成功引用邮件通知并发送给 Agent (${agent}) 的聊天 session 闭环 (已持久化至 SQLite)`,
       reply: replyRecord,
       citationSnippet,
       notification: email,
@@ -838,6 +988,43 @@ async function startServer() {
         rules: w.collaborationContractRules,
       })),
       connectedExternalAgents: Object.values(externalAgentHeartbeats),
+      sqlitePersistence: getDbStats(),
+    });
+  });
+
+  // ==========================================
+  // 7. SQLITE PERSISTENCE STATUS & HEALTH LOGS
+  // ==========================================
+  app.get('/api/v1/system/db-status', (req, res) => {
+    res.json({
+      status: 'connected',
+      storageType: 'SQLite3 (node:sqlite Local Database)',
+      persistedEntities: ['services', 'email_notifications', 'workflows', 'audit_logs', 'health_logs', 'agent_session_outbox'],
+      stats: getDbStats(),
+    });
+  });
+
+  app.get('/api/v1/health-logs', (req, res) => {
+    const limit = Math.min(200, parseInt(req.query.limit as string) || 100);
+    res.json({
+      logs: healthLogs.slice(0, limit),
+      count: healthLogs.length,
+    });
+  });
+
+  // 彻底重置清空 SQLite 数据库，回归纯净零模拟数据基准
+  app.post('/api/v1/system/reset-db', (req, res) => {
+    clearAllData();
+    services = [];
+    healthLogs = [];
+    workflows = [];
+    auditLogs = [];
+    emailNotifications = [];
+    agentSessionOutbox = [];
+    res.json({
+      success: true,
+      message: 'SQLite 数据库与服务端内存已彻底清空，已恢复为零模拟数据纯净基准。',
+      stats: getDbStats(),
     });
   });
 

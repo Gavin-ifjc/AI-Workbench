@@ -8,6 +8,21 @@ interface SettingsModalProps {
   setOpenClawPath: (path: string) => void;
   autoHealEnabled: boolean;
   setAutoHealEnabled: (enabled: boolean) => void;
+  onResetDatabase?: () => void;
+  dbStats?: {
+    engine: string;
+    dbPath: string;
+    sizeKb: number;
+    journalMode: string;
+    tableCounts: {
+      services: number;
+      emailNotifications: number;
+      workflows: number;
+      auditLogs: number;
+      healthLogs: number;
+      agentSessionOutbox: number;
+    };
+  } | null;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -17,9 +32,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setOpenClawPath,
   autoHealEnabled,
   setAutoHealEnabled,
+  onResetDatabase,
+  dbStats,
 }) => {
   const [localPathInput, setLocalPathInput] = useState<string>(openClawPath);
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -88,6 +106,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onChange={(e) => setAutoHealEnabled(e.target.checked)}
               className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
             />
+          </div>
+
+          {/* Local SQLite3 Persistence Status */}
+          <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                <HardDrive className="w-3.5 h-3.5 text-emerald-700" />
+                <span>本地 SQLite3 持久化存储 (替代纯内存数组)</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[10px] font-semibold">
+                {dbStats?.journalMode || 'WAL'} 模式 · 活跃存续
+              </span>
+            </div>
+            <div className="font-mono text-[11px] text-emerald-900/80 space-y-1 mb-2.5">
+              <div>数据库路径: <span className="text-slate-800 font-semibold">{dbStats?.dbPath || './data/openclaw_hub.db'}</span></div>
+              <div>引擎规范: <span className="text-slate-800 font-semibold">{dbStats?.engine || 'node:sqlite (DatabaseSync)'}</span> ({dbStats?.sizeKb || 0} KB)</div>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5 text-center font-mono text-[10px]">
+              <div className="bg-white/80 border border-emerald-200/60 rounded-md p-1.5">
+                <div className="text-slate-500">服务状态</div>
+                <div className="font-bold text-slate-800 text-xs mt-0.5">{dbStats?.tableCounts?.services ?? 0}</div>
+              </div>
+              <div className="bg-white/80 border border-emerald-200/60 rounded-md p-1.5">
+                <div className="text-slate-500">邮件通知</div>
+                <div className="font-bold text-slate-800 text-xs mt-0.5">{dbStats?.tableCounts?.emailNotifications ?? 0}</div>
+              </div>
+              <div className="bg-white/80 border border-emerald-200/60 rounded-md p-1.5">
+                <div className="text-slate-500">业务台账</div>
+                <div className="font-bold text-slate-800 text-xs mt-0.5">{dbStats?.tableCounts?.workflows ?? 0}</div>
+              </div>
+              <div className="bg-white/80 border border-emerald-200/60 rounded-md p-1.5">
+                <div className="text-slate-500">审计日志</div>
+                <div className="font-bold text-slate-800 text-xs mt-0.5">{dbStats?.tableCounts?.auditLogs ?? 0}</div>
+              </div>
+            </div>
+
+            {onResetDatabase && (
+              <div className="mt-2.5 pt-2 border-t border-emerald-200/60 flex items-center justify-between">
+                <span className="text-[10.5px] text-emerald-800">需要清除所有测试记录？</span>
+                <button
+                  type="button"
+                  disabled={isResetting}
+                  onClick={() => {
+                    setIsResetting(true);
+                    onResetDatabase();
+                    setTimeout(() => setIsResetting(false), 600);
+                  }}
+                  className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10.5px] font-semibold transition-colors disabled:opacity-50"
+                >
+                  {isResetting ? '正在重置...' : '一键清空数据 (重置为零数据纯净基准)'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Local Probes endpoints */}
