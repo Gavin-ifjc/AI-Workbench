@@ -68,7 +68,7 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-rose-900">
-                  🚨 本地核心服务异常中断！(已启动最高级丢数据预警)
+                  本地核心服务异常中断
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] bg-rose-600 text-white font-mono font-bold">
                   {downServices.length} 个离线
@@ -79,7 +79,6 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
                 <span className="font-semibold text-rose-900">
                   {downServices.map((s) => `${s.name} (Port ${s.port})`).join(', ')}
                 </span>
-                。注意：历史曾发生持久化中断事故，内存池若未刷盘将导致向量与消息丢失！
               </p>
             </div>
           </div>
@@ -99,19 +98,19 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
         </div>
       )}
 
-      {/* KPI Stats Strip (Light Theme) */}
+      {/* KPI Stats Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* KPI 1: System Availability */}
         <div className="p-4 rounded-xl bg-white border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-              SYSTEM AVAILABILITY
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              系统可用率
             </span>
             <div className="text-2xl font-black text-slate-900 font-mono mt-0.5">
-              {Math.round((healthyServices.length / services.length) * 100)}%
+              {services.length > 0 ? Math.round((healthyServices.length / services.length) * 100) : 100}%
             </div>
-            <span className="text-[11px] text-slate-500 font-mono">
-              {healthyServices.length} / {services.length} 服务正常存续
+            <span className="text-[11px] text-slate-400 font-mono">
+              {healthyServices.length} / {services.length} 正常运行
             </span>
           </div>
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
@@ -123,15 +122,14 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
         <div className="p-4 rounded-xl bg-white border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] flex items-center justify-between">
           <div>
             <div className="flex items-center space-x-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                DATA LOSS PREVENTION
+              <span className="text-[11px] font-semibold text-slate-500">
+                数据防丢
               </span>
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
             </div>
             <div className="text-2xl font-black text-emerald-700 font-mono mt-0.5">
-              零丢数据防护
+              正常防护
             </div>
-            <span className="text-[11px] text-slate-500">WAL 快照与双重探针在线</span>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
             <Database className="w-5 h-5" />
@@ -141,17 +139,18 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
         {/* KPI 3: Avg Probe Latency */}
         <div className="p-4 rounded-xl bg-white border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-              AVG PROBE LATENCY
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              探活延迟
             </span>
             <div className="text-2xl font-black text-slate-900 font-mono mt-0.5">
-              {Math.round(
-                services.reduce((acc, s) => acc + (s.status === 'down' ? 0 : s.lastPingMs), 0) /
-                  (healthyServices.length || 1)
-              )}{' '}
+              {services.length > 0 && healthyServices.length > 0
+                ? Math.round(
+                    services.reduce((acc, s) => acc + (s.status === 'down' ? 0 : s.lastPingMs), 0) /
+                      healthyServices.length
+                  )
+                : 0}{' '}
               <span className="text-xs text-slate-500 font-normal">ms</span>
             </div>
-            <span className="text-[11px] text-slate-500 font-mono">本地 Mac 回环 IPC / Socket</span>
           </div>
           <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200 flex items-center justify-center">
             <Activity className="w-5 h-5" />
@@ -161,8 +160,8 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
         {/* KPI 4: Polling Interval Controller */}
         <div className="p-4 rounded-xl bg-white border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              POLLING FREQUENCY
+            <span className="text-[11px] font-semibold text-slate-500">
+              巡检频率
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono font-bold">
               每 {pollIntervalSec}s
@@ -186,20 +185,15 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
         </div>
       </div>
 
-      {/* Services Table Matrix (High Density Specification: py-[7px], px-3, hover:bg-[#ebf3ff]) */}
+      {/* Services Table Matrix */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] overflow-hidden">
         {/* Table Header Section */}
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center space-x-2">
             <Server className="w-4 h-4 text-blue-600" />
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-800">
-              本地服务存续探活矩阵 (Local Service Health Matrix)
+            <h2 className="text-xs font-bold text-slate-800">
+              本地服务
             </h2>
-          </div>
-          <div className="flex items-center space-x-2 text-[11px] text-slate-500 font-mono">
-            <span>隔离监控进程: PID 10422</span>
-            <span>•</span>
-            <span className="text-emerald-600 font-medium">零侵入 Out-of-band</span>
           </div>
         </div>
 
@@ -224,7 +218,18 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {services.map((srv, idx) => {
+              {services.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-slate-400 text-xs">
+                    <Server className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <p className="text-sm font-semibold text-slate-700">暂无登记的监控服务</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                      系统已清空预置模拟数据。可通过外部 API 注册或待 OpenClaw 探活守护接入真实服务。
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                services.map((srv, idx) => {
                 const isDown = srv.status === 'down';
                 const isDegraded = srv.status === 'degraded';
 
@@ -364,7 +369,7 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>
@@ -375,12 +380,9 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
           <div className="flex items-center space-x-2">
             <Terminal className="w-4 h-4 text-slate-700" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-              轻量健康日志流 (Lightweight Health Audit Logs)
+            <h3 className="text-xs font-bold text-slate-800">
+              健康日志
             </h3>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono">
-              原则：不复制业务全文 · 仅记录心跳/时延/存续/风险
-            </span>
           </div>
 
           <div className="flex items-center space-x-2">

@@ -84,27 +84,16 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
   return (
     <div className="space-y-4">
       {/* Top Description Banner */}
-      <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-            <h2 className="text-sm font-bold text-slate-800">
-              工作流协作台账 + 变更留痕 (Workflow Registry & Audit Trail)
-            </h2>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-mono font-bold">
-              独立人可读规则库
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 max-w-3xl leading-relaxed">
-            解决痛点：工作流散在各 Agent、被改后不知谁负责哪环节、是否在执行。独立登记
-            <span className="font-semibold text-slate-800">“协作规则与责任契约”</span>
-            ，非业务数据镜像；任何环节交接与规则调整均强制生成留痕 Diff。
-          </p>
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center space-x-2.5">
+          <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+          <h2 className="text-xs font-bold text-slate-800">
+            工作流台账
+          </h2>
         </div>
 
         <div className="flex items-center space-x-2 shrink-0">
           <div className="text-right">
-            <span className="text-[10px] text-slate-400 block font-mono uppercase">已留痕审计</span>
             <span className="text-xs font-bold text-slate-800 font-mono">
               {auditLogs.length} 条变更记录
             </span>
@@ -116,36 +105,46 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Left 2 Cols: Active Workflow Blueprint & Stage Matrix */}
         <div className="xl:col-span-2 space-y-4">
-          {/* Workflow Selector Tabs */}
-          <div className="flex items-center space-x-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 overflow-x-auto">
-            {workflows.map((wf) => {
-              const isSelected = wf.id === selectedWorkflowId;
-              return (
-                <button
-                  key={wf.id}
-                  onClick={() => setSelectedWorkflowId(wf.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center space-x-2 ${
-                    isSelected
-                      ? 'bg-white text-slate-900 font-bold shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <span className="font-mono text-[10px] text-blue-600 bg-blue-50 px-1 py-0.2 rounded">
-                    {wf.code}
-                  </span>
-                  <span>{wf.title}</span>
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      wf.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-400'
-                    }`}
-                  />
-                </button>
-              );
-            })}
-          </div>
+          {workflows.length === 0 || !activeWorkflow ? (
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] p-12 text-center text-slate-400">
+              <FileSpreadsheet className="w-10 h-10 mx-auto text-slate-300 mb-3" />
+              <p className="text-sm font-bold text-slate-700">暂无登记的协同工作流</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                系统已清空预置模拟业务流数据。可通过工作流定义或外部 API 接入真实调度台账。
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Workflow Selector Tabs */}
+              <div className="flex items-center space-x-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 overflow-x-auto">
+                {workflows.map((wf) => {
+                  const isSelected = wf.id === selectedWorkflowId;
+                  return (
+                    <button
+                      key={wf.id}
+                      onClick={() => setSelectedWorkflowId(wf.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center space-x-2 ${
+                        isSelected
+                          ? 'bg-white text-slate-900 font-bold shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <span className="font-mono text-[10px] text-blue-600 bg-blue-50 px-1 py-0.2 rounded">
+                        {wf.code}
+                      </span>
+                      <span>{wf.title}</span>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          wf.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
 
-          {/* Active Workflow Card */}
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] p-5 space-y-4">
+              {/* Active Workflow Card */}
+              <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] p-5 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <div className="flex items-center space-x-2">
@@ -205,7 +204,7 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                  协作原则与交付契约规范 (人可读、可核对)
+                  协作契约准则
                 </span>
                 <button
                   onClick={() => setIsAddingRule(true)}
@@ -231,7 +230,7 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
                     type="text"
                     value={newRuleInput}
                     onChange={(e) => setNewRuleInput(e.target.value)}
-                    placeholder="输入协作契约规则，例如：'文档由 DocuWriter 最终审阅并加盖时间戳'..."
+                    placeholder="输入协作契约规则..."
                     className="flex-1 h-7 bg-white border border-slate-200 rounded-lg px-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-400"
                   />
                   <button
@@ -250,11 +249,11 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
               )}
             </div>
 
-            {/* Stages Responsibility Table (Section 4.3: py-[7px], px-3, hover:bg-[#ebf3ff]) */}
+            {/* Stages Responsibility Table */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  环节责任人与交付契约清单 (Pipeline Matrix)
+                <h4 className="text-xs font-bold text-slate-800">
+                  环节责任人与契约
                 </h4>
                 <span className="text-[11px] text-slate-400 font-mono">
                   最后核对: {activeWorkflow.updatedAt}
@@ -347,7 +346,9 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </>
+      )}
+    </div>
 
         {/* Right 1 Col: Audit Diff Log Panel (Section 1.2 & 4.3) */}
         <div className="space-y-3">
@@ -355,18 +356,11 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center space-x-2">
                 <History className="w-4 h-4 text-slate-700" />
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                  变更留痕审计流 (Audit Diff Log)
+                <h3 className="text-xs font-bold text-slate-800">
+                  变更留痕
                 </h3>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono">
-                防篡改追踪
-              </span>
             </div>
-
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              任何人在工作台微调环节、转派 Agent 或改动规则，均在此生成留痕对比，防止责任推诿。
-            </p>
 
             <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
               {auditLogs.map((log) => (

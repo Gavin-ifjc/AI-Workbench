@@ -85,24 +85,15 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
   return (
     <div className="space-y-4">
       {/* Top Banner with Re-scan button */}
-      <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <Boxes className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-sm font-bold text-slate-800">
-              16 Agent · 技能资产全景目录 (3处物理目录扫描)
-            </h2>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono font-bold">
-              16 个 Agent 归组在册
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 max-w-3xl leading-relaxed">
-            实时扫描 16 个 Agent 团队能力，按 3 处物理路径归组：各 Agent 自身目录（39个）、全局共享目录（24个通用技能）及企业微信插件目录（15个企微技能）。贯彻{' '}
-            <span className="text-slate-800 font-semibold underline decoration-indigo-400">
-              非侵入原则：不复制业务全文
-            </span>
-            ，仅解析并维护契约入参出参、权限边界与版本哈希。
-          </p>
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.015)] p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center space-x-2.5">
+          <Boxes className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-xs font-bold text-slate-800">
+            技能资产目录
+          </h2>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono font-bold">
+            {agents.length} 个 Agent
+          </span>
         </div>
 
         <div className="flex items-center space-x-2 shrink-0">
@@ -112,7 +103,7 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
             className="h-7.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center space-x-1.5 transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-            <span>{isScanning ? '正在扫描目录...' : '重新扫描 16 个 Agent 目录'}</span>
+            <span>{isScanning ? '正在扫描...' : '重新扫描目录'}</span>
           </button>
         </div>
       </div>
@@ -128,16 +119,13 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">① Agent 自身目录 (专有)</span>
+            <span className="text-xs font-bold text-slate-800">① Agent 自身目录</span>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-bold">
-              39 个专有技能
+              {skills.filter((s) => s.locationCategory === 'agent_workspace').length} 个专有技能
             </span>
           </div>
           <div className="text-[11px] text-slate-500 font-mono mt-1 truncate">
             ~/.openclaw/workspace/&lt;agent_id&gt;/skills/
-          </div>
-          <div className="text-[11px] text-slate-400 mt-1">
-            由 16 位 Agent 各自私有加载，保障职责边界
           </div>
         </div>
 
@@ -150,16 +138,13 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">② 全局共享目录 (公共)</span>
+            <span className="text-xs font-bold text-slate-800">② 全局共享目录</span>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold">
-              24 个通用技能
+              {skills.filter((s) => s.locationCategory === 'global_shared').length} 个通用技能
             </span>
           </div>
           <div className="text-[11px] text-slate-500 font-mono mt-1 truncate">
             ~/.openclaw/skills/
-          </div>
-          <div className="text-[11px] text-slate-400 mt-1">
-            网络搜索、文件操作、天气、Git 等全员可用
           </div>
         </div>
 
@@ -172,16 +157,13 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">③ 企微插件目录 (通讯)</span>
+            <span className="text-xs font-bold text-slate-800">③ 企微插件目录</span>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">
-              15 个企微技能
+              {skills.filter((s) => s.locationCategory === 'wecom_plugin').length} 个企微技能
             </span>
           </div>
           <div className="text-[11px] text-slate-500 font-mono mt-1 truncate">
             ~/.openclaw/plugin-skills/
-          </div>
-          <div className="text-[11px] text-slate-400 mt-1">
-            企微群通知、OA审批、通讯录同步等业务通道
           </div>
         </div>
       </div>
@@ -199,9 +181,6 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
                 <span className="font-mono text-amber-900 ml-1 font-semibold">
                   {duplicateSkillNames.join(', ')}
                 </span>
-                <p className="text-amber-700 text-[11px] mt-0.5">
-                  提示：CodeSmith 与 DevOps 均注册了同名 git 操作，可能导致工作流调用时职责混淆。
-                </p>
               </div>
             </div>
           )}
@@ -213,9 +192,6 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
                 <span className="font-bold text-blue-800">
                   实时探测到 {recentModifiedCount} 个 Skill 刚刚被修改
                 </span>
-                <p className="text-blue-700 text-[11px] mt-0.5 font-mono">
-                  AST 重构规范与调度引擎已自动抓取校验和，免人工介入维护。
-                </p>
               </div>
             </div>
           )}
@@ -227,7 +203,7 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
         <div className="flex items-center justify-between text-xs">
           <span className="font-bold text-slate-700 flex items-center gap-1.5">
             <FolderGit2 className="w-3.5 h-3.5 text-slate-500" />
-            16 位团队 Agent 资产透视 (点击可按 Agent 筛选技能；支持打开抽屉看详情)
+            团队 Agent
           </span>
           <span className="text-[11px] text-slate-400 font-mono">
             基准路径: ~/.openclaw/workspace/
@@ -247,14 +223,18 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
             <div className="flex items-center justify-between font-bold">
               <span>全部 Agent</span>
               <span className="font-mono text-[10px] bg-white px-1.5 py-0.2 rounded border border-slate-200">
-                16
+                {agents.length}
               </span>
             </div>
-            <div className="text-[10px] text-slate-400 mt-0.5">全量 78 项能力资产</div>
           </button>
 
-          {/* 16 Agents */}
-          {agents.map((agent) => {
+          {/* Agents */}
+          {agents.length === 0 ? (
+            <div className="col-span-full py-4 text-center text-slate-400 text-xs">
+              暂无已同步的 Agent 资产记录
+            </div>
+          ) : (
+            agents.map((agent) => {
             const isSelected = selectedAgentId === agent.id;
             return (
               <div
@@ -289,8 +269,9 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
                 </div>
               </div>
             );
-          })}
-        </div>
+          })
+        )}
+      </div>
       </div>
 
       {/* Filter and Search Bar (Section 1.2: 32px ~ 36px height) */}
@@ -345,7 +326,7 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
                 <th className="px-3 py-[7px] border-b border-slate-200">归属 Agent</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 text-center">权限等级</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 min-w-[260px]">
-                  能力摘要 (严格不复制全文)
+                  能力摘要
                 </th>
                 <th className="px-3 py-[7px] border-b border-slate-200">入参出参规范</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 font-mono text-right">
@@ -357,8 +338,12 @@ export const AgentSkillCatalog: React.FC<AgentSkillCatalogProps> = ({
             <tbody className="divide-y divide-slate-100 bg-white">
               {filteredSkills.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
-                    未检索到符合条件的 Skill 资产记录
+                  <td colSpan={9} className="py-12 text-center text-slate-400 text-xs">
+                    <Boxes className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <p className="text-sm font-semibold text-slate-700">暂无登记的 Skill 资产</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                      系统已清空预置模拟数据。可通过重新扫描本地目录或连接 OpenClaw 守护进程挂载真实技能。
+                    </p>
                   </td>
                 </tr>
               ) : (

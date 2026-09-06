@@ -47,8 +47,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="w-6 h-6 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center">
               <Sliders className="w-3.5 h-3.5" />
             </div>
-            <h3 className="text-xs font-black text-slate-800 uppercase tracking-tight">
-              本地 Mac 独立运行与环境配置
+            <h3 className="text-xs font-bold text-slate-800">
+              环境配置
             </h3>
           </div>
           <button
@@ -64,7 +64,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div>
             <label className="block text-slate-700 font-bold mb-1 flex items-center gap-1.5">
               <Folder className="w-3.5 h-3.5 text-slate-500" />
-              OPENCLAW 本地基准目录 (Base Workspace):
+              OPENCLAW 本地基准目录:
             </label>
             <input
               type="text"
@@ -72,20 +72,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onChange={(e) => setLocalPathInput(e.target.value)}
               className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 font-mono text-slate-800 focus:outline-none focus:border-blue-400"
             />
-            <span className="text-[11px] text-slate-400 mt-1 block font-mono">
-              探活与目录扫描器监听此路径下 agents/ 目录与 skills 脚本变更
-            </span>
-          </div>
-
-          {/* Separation Guarantee Box */}
-          <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200/80 space-y-1.5">
-            <div className="flex items-center space-x-2 text-blue-700 font-bold">
-              <Shield className="w-4 h-4" />
-              <span>架构解耦保障 (Out-of-band Architecture)</span>
-            </div>
-            <p className="text-blue-900/80 text-[11px] leading-relaxed">
-              本工作台不依赖任何 OPENCLAW 内部源码包。所有监控均通过标准非侵入探针 (REST ping / IPC Socket / 文件 stat 比对) 执行。无论 OPENCLAW 升级大版本还是环境崩溃，工作台 100% 独立稳定运行。
-            </p>
           </div>
 
           {/* Auto-heal switch */}

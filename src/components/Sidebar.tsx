@@ -6,10 +6,10 @@ import {
   Download,
   Sliders,
   RefreshCw,
-  Bot,
   ShieldCheck,
   Building2,
   Crown,
+  Mail,
 } from 'lucide-react';
 import { ActiveTab, LocalService } from '../types';
 
@@ -21,9 +21,9 @@ interface SidebarProps {
   onRefreshNow: () => void;
   onOpenSettings: () => void;
   onExportReport: () => void;
-  onOpenAgentConnect: () => void;
   conflictSkillCount: number;
   pollIntervalSec: number;
+  pendingEmailCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -34,42 +34,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRefreshNow,
   onOpenSettings,
   onExportReport,
-  onOpenAgentConnect,
   conflictSkillCount,
   pollIntervalSec,
+  pendingEmailCount = 0,
 }) => {
   const [isPinned, setIsPinned] = useState<boolean>(false);
   const downCount = services.filter((s) => s.status === 'down').length;
 
   const navItems = [
     {
-      id: 'health' as ActiveTab,
-      label: '服务存续与监管',
-      sublabel: '本地与云端死活 · 8901防断流',
-      icon: Activity,
-      badge: downCount > 0 ? `${downCount} 挂死` : '全线正常',
+      id: 'emails' as ActiveTab,
+      label: '邮件通知',
+      icon: Mail,
+      badge: pendingEmailCount > 0 ? `${pendingEmailCount} 待批` : '0 待办',
       badgeColor:
-        downCount > 0
+        pendingEmailCount > 0
+          ? 'bg-amber-50 text-amber-700 border-amber-200 font-bold'
+          : 'bg-slate-100 text-slate-500 border-slate-200',
+      activeColor: 'text-indigo-600',
+    },
+    {
+      id: 'health' as ActiveTab,
+      label: '服务监管',
+      icon: Activity,
+      badge: services.length === 0 ? '0 服务' : downCount > 0 ? `${downCount} 挂死` : '全线正常',
+      badgeColor:
+        services.length === 0
+          ? 'bg-slate-100 text-slate-500 border-slate-200'
+          : downCount > 0
           ? 'bg-rose-50 text-rose-600 border-rose-200 font-bold'
           : 'bg-emerald-50 text-emerald-600 border-emerald-200',
       activeColor: 'text-blue-600',
     },
     {
       id: 'skills' as ActiveTab,
-      label: '16 Agent · 技能资产',
-      sublabel: '3处物理路径 · 归组透视',
+      label: '技能资产',
       icon: Boxes,
-      badge: '16 Agent',
-      badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200 font-bold',
+      badge: conflictSkillCount > 0 ? `${conflictSkillCount} 项冲突` : '资产全景',
+      badgeColor:
+        conflictSkillCount > 0
+          ? 'bg-amber-50 text-amber-700 border-amber-200 font-bold'
+          : 'bg-indigo-50 text-indigo-700 border-indigo-200 font-medium',
       activeColor: 'text-indigo-600',
     },
     {
       id: 'workflows' as ActiveTab,
-      label: '业务工作流台账',
-      sublabel: '5大业务流程 · 审计留痕',
+      label: '业务台账',
       icon: FileSpreadsheet,
-      badge: '5 条主线',
-      badgeColor: 'bg-blue-50 text-blue-600 border-blue-200 font-bold',
+      badge: '规则台账',
+      badgeColor: 'bg-blue-50 text-blue-600 border-blue-200 font-medium',
       activeColor: 'text-blue-600',
     },
   ];
@@ -84,18 +97,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div>
         <div className="h-14 flex items-center px-4 border-b border-slate-100 gap-3 bg-slate-50/50">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 flex items-center justify-center text-white font-black text-sm shadow-sm shrink-0 tracking-wider">
-            TY
+            OC
           </div>
-          <div className="flex flex-col min-w-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">
+          <div className="flex items-center min-w-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">
             <span className="font-bold text-xs tracking-tight text-slate-900 flex items-center gap-1.5">
-              <span>TYHOO · OpenClaw</span>
+              <span>OpenClaw Hub</span>
               <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 font-mono font-bold">
                 PRO
               </span>
-            </span>
-            <span className="text-[10px] text-slate-500 font-medium truncate flex items-center gap-1">
-              <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />
-              <span>王总 & 元元 监管监控屏</span>
             </span>
           </div>
         </div>
@@ -122,14 +131,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                 <div className="ml-3 flex-1 min-w-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium truncate">{item.label}</span>
+                    <span className="text-xs font-semibold truncate">{item.label}</span>
                     <span
                       className={`text-[9px] px-1.5 py-0.2 rounded-full border font-mono font-medium ${item.badgeColor}`}
                     >
                       {item.badge}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-400 truncate">{item.sublabel}</div>
                 </div>
 
                 {isActive && (
@@ -143,21 +151,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bottom Utility Controls */}
       <div className="p-2 border-t border-slate-100 space-y-1 bg-slate-50/50">
-        {/* Agent Connect Hub */}
-        <button
-          onClick={onOpenAgentConnect}
-          className="w-full flex items-center px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs transition-colors border border-blue-200"
-          title="外部 Agent 接入与开放 API 中心 (curl/Python)"
-        >
-          <div className="shrink-0 flex items-center justify-center w-6 h-6">
-            <Bot className="w-4 h-4 text-blue-600" />
-          </div>
-          <span className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap text-xs font-bold flex items-center justify-between flex-1">
-            <span>Agent 连线终端</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1" />
-          </span>
-        </button>
-
         {/* Quick Polling Refresh */}
         <button
           onClick={onRefreshNow}

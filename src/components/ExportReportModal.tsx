@@ -34,7 +34,7 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
 
   // Generate Markdown report
   const generateMarkdown = () => {
-    let md = `# OPENCLAW 独立 AI 工作台 · 协作规则台账与全景审计报告\n`;
+    let md = `# OpenClaw Hub · 协作规则台账与全景审计报告\n`;
     md += `> 生成时间: ${new Date().toLocaleString()} (Local Mac)\n`;
     md += `> 监控模式: 独立 Out-of-band 运行 (完全解耦，不复制业务全文)\n\n`;
 
@@ -46,8 +46,8 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
     });
     md += `\n`;
 
-    md += `## 2. 11 个 Agent · Skill 资产目录 (按原则不复制全文)\n\n`;
-    md += `总计收录 11 个 Agent，${skills.length} 项标准化 Skill 契约：\n\n`;
+    md += `## 2. ${agents.length} 个 Agent · Skill 资产目录 (按原则不复制全文)\n\n`;
+    md += `总计收录 ${agents.length} 个 Agent，${skills.length} 项标准化 Skill 契约：\n\n`;
     md += `| Skill 名称 | 负责 Agent | 版本 | 权限等级 | 交付/输出规范 | 校验和 (MD5) |\n`;
     md += `|---|---|---|---|---|---|\n`;
     skills.forEach((sk) => {
@@ -142,8 +142,8 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
             <div className="w-6 h-6 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center">
               <FileText className="w-3.5 h-3.5" />
             </div>
-            <h3 className="text-xs font-black text-slate-800 uppercase tracking-tight">
-              导出工作流协作台账与健康审计报告
+            <h3 className="text-xs font-bold text-slate-800">
+              导出报告
             </h3>
           </div>
 

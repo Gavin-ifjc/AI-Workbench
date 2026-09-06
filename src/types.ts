@@ -118,4 +118,35 @@ export interface WorkflowRegistryItem {
   status: 'ACTIVE' | 'PAUSED' | 'MAINTENANCE';
 }
 
-export type ActiveTab = 'health' | 'skills' | 'workflows';
+export type ActiveTab = 'health' | 'skills' | 'workflows' | 'emails';
+
+export type EmailLedgerStatus = '待处理' | '已处理' | '已闭环' | '暂缓';
+
+export interface EmailReplyRecord {
+  id: string;
+  repliedAt: string;
+  repliedBy: string; // e.g. "王总"
+  content: string;
+  assignedAgent: string; // e.g. "苏念", "元元", "程建"
+  actionType: 'proceed' | 'reject' | 'delegate' | 'custom';
+  sentToSessionId: string; // e.g. "session_agent_main_yuanyuan_01"
+  sessionAckStatus: 'delivered' | 'pending';
+  citationSnippet: string; // formatted quote sent to agent
+}
+
+export interface EmailNotification {
+  id: string; // e.g. "20260906-AIS-TEST-001"
+  notificationType: string; // e.g. "新商机邮件通知"
+  date: string; // e.g. "2026-09-06 18:06"
+  subject: string; // e.g. "AIS Technical-王总-业务 RFQ 询价（暂无编号待建档）"
+  content: string; // e.g. "负责人发来询价，询问产品报价与交期。"
+  archiveStatus: string; // e.g. "暂未归档（等指派后建档）"
+  ledgerStatus: EmailLedgerStatus; // e.g. "待处理"
+  nextStepSuggestion: string; // e.g. "建议安排苏念先做客户背景调研、出初步商务分析，再决定是否正式报价。要您定下是否推进。"
+  sender?: string;
+  recipient?: string;
+  suggestedAgent?: string;
+  priority?: 'critical' | 'high' | 'normal';
+  replies: EmailReplyRecord[];
+  rawSource?: string;
+}

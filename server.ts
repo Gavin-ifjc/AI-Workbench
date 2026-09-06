@@ -11,6 +11,7 @@ import {
   INITIAL_SKILLS,
   INITIAL_WORKFLOWS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_EMAIL_NOTIFICATIONS,
 } from './src/data/initialData';
 import {
   LocalService,
@@ -19,6 +20,8 @@ import {
   AgentSkill,
   WorkflowRegistryItem,
   WorkflowAuditLog,
+  EmailNotification,
+  EmailReplyRecord,
 } from './src/types';
 
 // In-Memory Repository (Synchronized across API requests & Web UI)
@@ -28,6 +31,22 @@ let agents: AgentAsset[] = [...AGENT_LIST];
 let skills: AgentSkill[] = [...INITIAL_SKILLS];
 let workflows: WorkflowRegistryItem[] = [...INITIAL_WORKFLOWS];
 let auditLogs: WorkflowAuditLog[] = [...INITIAL_AUDIT_LOGS];
+let emailNotifications: EmailNotification[] = [...INITIAL_EMAIL_NOTIFICATIONS];
+
+// Outbound closed-loop messages dispatched to Agent chat sessions
+interface AgentSessionOutboundMessage {
+  id: string;
+  emailId: string;
+  emailSubject: string;
+  targetAgent: string;
+  targetSessionId: string;
+  sentAt: string;
+  author: string;
+  directive: string;
+  formattedCitation: string;
+  status: 'delivered' | 'read' | 'pending';
+}
+let agentSessionOutbox: AgentSessionOutboundMessage[] = [];
 
 // Store connected external agents telemetry (e.g. 元元 or other agents connecting via API)
 const externalAgentHeartbeats: Record<
@@ -106,8 +125,8 @@ async function startServer() {
     const downCount = services.filter((s) => s.status === 'down').length;
     res.json({
       status: downCount > 0 ? 'degraded' : 'healthy',
-      title: 'OpenClaw 统一工作台 (TYHOO 运维与协作监控屏)',
-      forUsers: '王总 (TYHOO 高管) & 元元 (团队主管)',
+      title: 'OpenClaw Hub',
+      forUsers: '王总 & 元元 (团队主管)',
       timestamp: new Date().toISOString(),
       uptimeSeconds: process.uptime(),
       totalServices: services.length,
@@ -204,16 +223,43 @@ async function startServer() {
     }
   });
 
+  // 批量真实探活所有服务端口
+  app.post('/api/v1/services/probe-all', async (req, res) => {
+    for (const srv of services) {
+      if (srv.protocol === 'HTTP' && srv.port) {
+        if (srv.port === 3000) {
+          srv.status = 'healthy';
+          srv.lastPingMs = 1;
+          srv.lastHeartbeat = '常驻 (当前进程)';
+          continue;
+        }
+        const probeRes = await probeTcpPort('127.0.0.1', srv.port, 600);
+        if (probeRes.ok) {
+          srv.status = 'healthy';
+          srv.lastPingMs = probeRes.latencyMs;
+          srv.lastHeartbeat = '刚刚 (TCP 探测通过)';
+        } else {
+          srv.status = 'down';
+          srv.lastPingMs = 0;
+          srv.lastHeartbeat = '探测未响应 (端口未监听)';
+        }
+      } else {
+        srv.lastHeartbeat = '云端服务通道正常';
+      }
+    }
+    res.json({ services, count: services.length });
+  });
+
   app.post('/api/v1/services/:id/restart', (req, res) => {
     const srv = services.find((s) => s.id === req.params.id);
     if (!srv) {
       return res.status(404).json({ error: 'Service not found' });
     }
     srv.status = 'healthy';
-    srv.lastPingMs = Math.floor(Math.random() * 8) + 4;
-    srv.uptime = '刚刚拉起 (0m)';
-    srv.lastHeartbeat = '刚刚 (工作台拉起)';
-    srv.pid = Math.floor(Math.random() * 10000) + 50000;
+    srv.lastPingMs = 2;
+    srv.uptime = '已下发重启指令';
+    srv.lastHeartbeat = '刚刚 (手动拉起)';
+    srv.pid = 0;
 
     const log: HealthLogEntry = {
       id: `log-${Date.now()}`,
@@ -221,8 +267,8 @@ async function startServer() {
       serviceId: srv.id,
       serviceName: srv.name,
       level: 'info',
-      message: `【服务自愈拉起】已成功调度启动 ${srv.name} (分配临时 PID ${srv.pid})。提示：建议写入 macOS launchd 守护 plist 以彻底防止静默挂死！`,
-      latencyMs: 12,
+      message: `【服务拉起指令】已执行调度重启 ${srv.name}。提示：生产环境建议写入 macOS launchd 守护配置以实现自愈！`,
+      latencyMs: 2,
       lossRisk: false,
     };
     healthLogs.unshift(log);
@@ -447,14 +493,254 @@ async function startServer() {
   });
 
   // ==========================================
-  // 5. CONSOLIDATED CONTEXT OVERVIEW FOR AGENTS
+  // 5. EMAIL NOTIFICATION & CLOSED-LOOP DISPATCH APIS
+  // ==========================================
+  // 获取邮件通知清单
+  app.get('/api/v1/email-notifications', (req, res) => {
+    const { status, search, type } = req.query;
+    let filtered = [...emailNotifications];
+
+    if (status && status !== 'all') {
+      filtered = filtered.filter((e) => e.ledgerStatus === status);
+    }
+    if (type && type !== 'all') {
+      filtered = filtered.filter((e) => e.notificationType === type);
+    }
+    if (search && typeof search === 'string') {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (e) =>
+          e.id.toLowerCase().includes(q) ||
+          e.subject.toLowerCase().includes(q) ||
+          e.content.toLowerCase().includes(q) ||
+          (e.suggestedAgent && e.suggestedAgent.toLowerCase().includes(q))
+      );
+    }
+
+    const pendingCount = emailNotifications.filter((e) => e.ledgerStatus === '待处理').length;
+    const closedCount = emailNotifications.filter((e) => e.ledgerStatus === '已闭环' || e.ledgerStatus === '已处理').length;
+
+    res.json({
+      notifications: filtered,
+      totalCount: emailNotifications.length,
+      pendingCount,
+      closedCount,
+      outboxCount: agentSessionOutbox.length,
+      channel: '8901 Mail Scanner Probe & OpenClaw Agent Hook',
+      notice: '每条邮件通知支持王总批复并自动引用回传至 Agent Chat Session 形成闭环',
+    });
+  });
+
+  // Agent 或邮件扫描探针自动写入/同步新邮件通知
+  app.post('/api/v1/email-notifications', (req, res) => {
+    const {
+      id,
+      notificationType,
+      date,
+      subject,
+      content,
+      archiveStatus,
+      ledgerStatus,
+      nextStepSuggestion,
+      sender,
+      recipient,
+      suggestedAgent,
+      priority,
+    } = req.body;
+
+    if (!subject || !content) {
+      return res.status(400).json({ error: 'subject and content are required' });
+    }
+
+    const now = new Date();
+    const dateStr = date || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const emailId = id || `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-MAIL-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    // Check if exists
+    const existingIndex = emailNotifications.findIndex((e) => e.id === emailId);
+    const newRecord: EmailNotification = {
+      id: emailId,
+      notificationType: notificationType || '新商机邮件通知',
+      date: dateStr,
+      subject,
+      content,
+      archiveStatus: archiveStatus || '暂未归档（等指派后建档）',
+      ledgerStatus: ledgerStatus || '待处理',
+      nextStepSuggestion: nextStepSuggestion || '建议安排相关人员跟进处理，待王总批示。',
+      sender: sender || 'procurement@partner.com',
+      recipient: recipient || 'gavin.wang@internal',
+      suggestedAgent: suggestedAgent || '苏念',
+      priority: priority || 'high',
+      replies: existingIndex >= 0 ? emailNotifications[existingIndex].replies : [],
+      rawSource: 'OpenClaw 8901 邮件扫描探针',
+    };
+
+    if (existingIndex >= 0) {
+      emailNotifications[existingIndex] = newRecord;
+    } else {
+      emailNotifications.unshift(newRecord);
+    }
+
+    // Append to health logs
+    healthLogs.unshift({
+      id: `log-mail-${Date.now()}`,
+      timestamp: new Date().toLocaleTimeString(),
+      serviceId: 'srv-mail-probe',
+      serviceName: '8901 邮件扫描探针',
+      level: 'info',
+      message: `【邮件通知同步】${newRecord.notificationType} ID: ${newRecord.id} 主题: ${newRecord.subject}`,
+      latencyMs: 12,
+      lossRisk: false,
+    });
+    if (healthLogs.length > 100) healthLogs.pop();
+
+    res.status(201).json({
+      success: true,
+      notification: newRecord,
+      message: 'Email notification synced successfully',
+    });
+  });
+
+  // 王总回复处理意见，自动引用并推送到 Agent 的聊天 session
+  app.post('/api/v1/email-notifications/:id/reply', (req, res) => {
+    const { id } = req.params;
+    const {
+      content,
+      repliedBy,
+      assignedAgent,
+      actionType,
+      sentToSessionId,
+      archiveAction,
+      newLedgerStatus,
+    } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Reply content is required' });
+    }
+
+    const email = emailNotifications.find((e) => e.id === id);
+    if (!email) {
+      return res.status(404).json({ error: `Email notification ${id} not found` });
+    }
+
+    const author = repliedBy || '王总';
+    const agent = assignedAgent || email.suggestedAgent || '苏念';
+    const sessionId = sentToSessionId || `session_agent_${agent}_chat_main`;
+    const nowStr = new Date().toLocaleString();
+
+    // 格式化引用与闭环指令报文 (将自动发送给 Agent 聊天 session)
+    const citationSnippet = `【王总批复闭环指令】
+> 引用邮件通知：
+> 邮件ID：${email.id}
+> 日期：${email.date}
+> 类型：${email.notificationType}
+> 主题：${email.subject}
+> 归档状态：${email.archiveStatus}
+> 内容摘要：${email.content}
+> 下一步建议：${email.nextStepSuggestion}
+────────────────────────────────────
+王总批复处理意见：
+“${content.trim()}”
+指派执行 Agent: ${agent}
+批复时间: ${nowStr}
+同步到 Agent 会话: ${sessionId} (200 OK 已闭环)`;
+
+    const replyRecord: EmailReplyRecord = {
+      id: `reply-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      repliedAt: nowStr,
+      repliedBy: author,
+      content: content.trim(),
+      assignedAgent: agent,
+      actionType: actionType || 'proceed',
+      sentToSessionId: sessionId,
+      sessionAckStatus: 'delivered',
+      citationSnippet,
+    };
+
+    email.replies.push(replyRecord);
+    email.ledgerStatus = (newLedgerStatus as any) || '已闭环';
+    if (archiveAction) {
+      email.archiveStatus = archiveAction;
+    } else if (email.archiveStatus.includes('暂未归档')) {
+      email.archiveStatus = `已建档派单 (责任 Agent: ${agent})`;
+    }
+
+    // 放入发往 Agent session 的闭环出箱队列
+    const outboxMsg: AgentSessionOutboundMessage = {
+      id: `outbox-${Date.now()}`,
+      emailId: email.id,
+      emailSubject: email.subject,
+      targetAgent: agent,
+      targetSessionId: sessionId,
+      sentAt: nowStr,
+      author,
+      directive: content.trim(),
+      formattedCitation: citationSnippet,
+      status: 'delivered',
+    };
+    agentSessionOutbox.unshift(outboxMsg);
+
+    // 写入工作流与操作审计日志
+    auditLogs.unshift({
+      id: `audit-${Date.now()}`,
+      timestamp: nowStr,
+      editor: author,
+      action: 'STEP_UPDATE',
+      targetWorkflowId: 'wf-01',
+      summary: `批复邮件通知【${email.subject}】并指派 ${agent} 闭环执行`,
+      diffBefore: `台账状态: 待处理 | 归档: 暂未归档`,
+      diffAfter: `台账状态: ${email.ledgerStatus} | 责任人: ${agent} | 批复: "${content.trim()}"`,
+      reason: `王总通过邮件通知大盘给出处理意见，已直接闭环投递至 ${agent} 会话`,
+    });
+
+    // 记录到健康日志
+    healthLogs.unshift({
+      id: `log-mail-reply-${Date.now()}`,
+      timestamp: new Date().toLocaleTimeString(),
+      serviceId: 'srv-mail-probe',
+      serviceName: '邮件通知闭环分发',
+      level: 'info',
+      message: `【王总批复闭环】已将邮件 ${email.id} 批示注入 Agent (${agent}) 会话 ${sessionId}`,
+      latencyMs: 15,
+      lossRisk: false,
+    });
+    if (healthLogs.length > 100) healthLogs.pop();
+
+    res.json({
+      success: true,
+      message: `已成功引用邮件通知并发送给 Agent (${agent}) 的聊天 session 闭环`,
+      reply: replyRecord,
+      citationSnippet,
+      notification: email,
+      sessionId,
+    });
+  });
+
+  // Agent Session 轮询获取外发批复闭环消息
+  app.get('/api/v1/email-notifications/session-outbox', (req, res) => {
+    const { agent, sessionId } = req.query;
+    let list = [...agentSessionOutbox];
+    if (agent && typeof agent === 'string') {
+      list = list.filter((m) => m.targetAgent === agent);
+    }
+    if (sessionId && typeof sessionId === 'string') {
+      list = list.filter((m) => m.targetSessionId === sessionId);
+    }
+    res.json({
+      messages: list,
+      count: list.length,
+    });
+  });
+
+  // ==========================================
+  // 6. CONSOLIDATED CONTEXT OVERVIEW FOR AGENTS
   // ==========================================
   app.get('/api/v1/system/overview', (req, res) => {
     const format = req.query.format === 'markdown' ? 'markdown' : 'json';
 
     if (format === 'markdown') {
-      let md = `# OpenClaw 统一工作台 · 系统监管与协作大盘\n\n`;
-      md += `> 面向: 王总 (TYHOO 高管) & 元元 (团队主管) | 时间: ${new Date().toLocaleString()}\n\n`;
+      let md = `# OpenClaw Hub · 系统监管与协作大盘\n\n`;
+      md += `> 面向: 王总 & 元元 (团队主管) | 时间: ${new Date().toLocaleString()}\n\n`;
       
       md += `## 1. 本地服务存续状态 (防事故·防丢数据)\n`;
       services.forEach((s) => {
@@ -493,13 +779,27 @@ async function startServer() {
         md += `\n`;
       });
 
+      md += `\n## 4. 邮件通知与闭环处理台账 (接入 8901 邮件扫描探针)\n`;
+      md += `共计 ${emailNotifications.length} 条邮件通知 (其中 ${emailNotifications.filter((e) => e.ledgerStatus === '待处理').length} 条待王总定夺)\n`;
+      emailNotifications.forEach((e) => {
+        const replyTag = e.replies.length > 0 ? `[✅ 已批复闭环(${e.replies.length}条)]` : `[⏳ 待王总批复]`;
+        md += `- **[${e.notificationType}]** ${e.subject} ${replyTag}\n`;
+        md += `  - 邮件ID: \`${e.id}\` | 时间: ${e.date} | 归档: ${e.archiveStatus} | 台账: ${e.ledgerStatus}\n`;
+        md += `  - 建议建议: ${e.nextStepSuggestion}\n`;
+        if (e.replies.length > 0) {
+          const lastR = e.replies[e.replies.length - 1];
+          md += `  - 王总最新批复: "${lastR.content}" -> 指派 Agent: ${lastR.assignedAgent} (${lastR.repliedAt})\n`;
+        }
+      });
+      md += `\n`;
+
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       return res.send(md);
     }
 
     res.json({
       timestamp: new Date().toISOString(),
-      forUsers: '王总 (TYHOO 高管) & 元元 (团队主管)',
+      forUsers: '王总 & 元元 (团队主管)',
       status: services.some((s) => s.status === 'down') ? 'degraded' : 'healthy',
       services: services.map((s) => ({
         id: s.id,
@@ -510,6 +810,18 @@ async function startServer() {
         isLaunchdManaged: s.isLaunchdManaged,
         incidentNote: s.incidentNote,
       })),
+      emailNotifications: {
+        total: emailNotifications.length,
+        pending: emailNotifications.filter((e) => e.ledgerStatus === '待处理').length,
+        closed: emailNotifications.filter((e) => e.ledgerStatus === '已闭环' || e.ledgerStatus === '已处理').length,
+        latest: emailNotifications.slice(0, 3).map((e) => ({
+          id: e.id,
+          subject: e.subject,
+          type: e.notificationType,
+          ledgerStatus: e.ledgerStatus,
+          repliesCount: e.replies.length,
+        })),
+      },
       agentsCount: agents.length,
       skillsCount: skills.length,
       skillLocations: {
