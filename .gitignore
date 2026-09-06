@@ -9,3 +9,11 @@ coverage/
 
 # 本地依赖锁(node环境产物,云端用bun.lock)
 package-lock.json
+
+# ===== 本地运行数据库(含业务数据),严禁推上GitHub =====
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
