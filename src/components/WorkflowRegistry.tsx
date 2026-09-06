@@ -162,8 +162,22 @@ export const WorkflowRegistry: React.FC<WorkflowRegistryProps> = ({
                   >
                     {activeWorkflow.status === 'ACTIVE' ? '● 正在执行' : '暂停调度'}
                   </span>
+                  {activeWorkflow.leadResponsibleAgent && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                      <span>👑 牵头:</span>
+                      <span>{activeWorkflow.leadResponsibleAgent}</span>
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">{activeWorkflow.description}</p>
+                {activeWorkflow.outputPath && (
+                  <div className="mt-1.5 flex items-center space-x-1.5 text-[11px] font-mono text-slate-500">
+                    <span className="font-semibold text-slate-600">📁 交付落盘路径:</span>
+                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded border border-slate-200 truncate">
+                      {activeWorkflow.outputPath}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center space-x-2">

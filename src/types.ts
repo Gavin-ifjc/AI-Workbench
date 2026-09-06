@@ -4,8 +4,9 @@ export interface LocalService {
   id: string;
   name: string;
   port: number;
-  protocol: 'HTTP' | 'gRPC' | 'IPC' | 'WebSocket';
+  protocol: 'HTTP' | 'HTTPS' | 'TCP' | 'IPC' | 'WebSocket';
   path: string;
+  targetUrl?: string;
   status: ServiceStatus;
   uptime: string;
   lastPingMs: number;
@@ -14,6 +15,9 @@ export interface LocalService {
   cpuPercent: number;
   pid: number;
   isCritical: boolean; // if critical service goes down, triggers high-priority alert
+  isLaunchdManaged: boolean; // whether it is daemon-managed by macOS launchd
+  launchdLabel?: string;
+  incidentNote?: string; // real incident history (e.g. 8901 crash cause)
   errorDetails?: string;
   restartCmd?: string;
 }
@@ -36,12 +40,16 @@ export interface SkillParam {
   desc: string;
 }
 
+export type SkillLocationCategory = 'agent_workspace' | 'global_shared' | 'wecom_plugin';
+
 export interface AgentSkill {
   id: string;
   agentId: string;
   name: string;
   version: string;
   filePath: string;
+  locationCategory: SkillLocationCategory;
+  locationPath: string; // e.g. /Users/agents/.openclaw/workspace/<id>/skills/
   description: string;
   inputSignature: SkillParam[];
   outputType: string;
@@ -57,8 +65,10 @@ export interface AgentAsset {
   id: string;
   name: string;
   role: string;
-  category: 'core' | 'execution' | 'audit' | 'knowledge';
+  category: 'executive_lead' | 'business_domain' | 'engineering_tech' | 'support_admin';
+  isLeadOrVvip?: boolean; // for main (元元)
   skillCount: number;
+  workspaceSkillsCount: number;
   skillsDir: string;
   activeStatus: 'idle' | 'running' | 'offline';
   lastScanned: string;
@@ -83,7 +93,7 @@ export interface WorkflowStep {
 export interface WorkflowAuditLog {
   id: string;
   timestamp: string;
-  editor: string; // e.g. "DevOps / Gavin", "Orchestrator v2.4", "Auto-Heal Engine"
+  editor: string; // e.g. "元元 (团队主管)", "程建 (项目经理)", "王总 (批复)"
   action: 'CREATE' | 'STEP_UPDATE' | 'OWNER_CHANGE' | 'RULE_REVISED' | 'EMERGENCY_OVERRIDE';
   targetWorkflowId: string;
   summary: string;
@@ -95,9 +105,11 @@ export interface WorkflowAuditLog {
 export interface WorkflowRegistryItem {
   id: string;
   title: string;
-  code: string; // e.g. WF-101
+  code: string; // WF-01 to WF-05
   category: string;
   description: string;
+  outputPath?: string; // e.g. /Users/Shared/程建/<项目名>/
+  leadResponsibleAgent: string;
   steps: WorkflowStep[];
   collaborationContractRules: string[]; // human readable rules
   version: string;
@@ -106,32 +118,4 @@ export interface WorkflowRegistryItem {
   status: 'ACTIVE' | 'PAUSED' | 'MAINTENANCE';
 }
 
-export interface ComputeMetrics {
-  queuedTasks: number;
-  activeSlots: number;
-  totalSlots: number;
-  tokensPerSec: number;
-  latencyP50Ms: number;
-  latencyP95Ms: number;
-  latencyP99Ms: number;
-  peakLatencyThresholdMs: number;
-  isLatencyAlertTriggered: boolean;
-  gpuMemoryUsedGb: number;
-  gpuMemoryTotalGb: number;
-  metalMpsUtilization: number;
-  thermalState: 'Nominal' | 'Fair' | 'Serious' | 'Critical';
-  taskQueue: QueuedTask[];
-}
-
-export interface QueuedTask {
-  id: string;
-  title: string;
-  agentId: string;
-  priority: 'P0' | 'P1' | 'P2';
-  queuedDurationSec: number;
-  predictedWaitMs: number;
-  modelTarget: string;
-  status: 'waiting' | 'running' | 'throttled';
-}
-
-export type ActiveTab = 'health' | 'skills' | 'workflows' | 'telemetry';
+export type ActiveTab = 'health' | 'skills' | 'workflows';

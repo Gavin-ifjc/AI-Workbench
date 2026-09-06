@@ -24,7 +24,6 @@ interface ServiceHealthDashboardProps {
   services: LocalService[];
   logs: HealthLogEntry[];
   onRestartService: (serviceId: string) => void;
-  onSimulateCrash: (serviceId: string) => void;
   onProbeService: (serviceId: string) => void;
   onClearLogs: () => void;
   pollIntervalSec: number;
@@ -35,7 +34,6 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
   services,
   logs,
   onRestartService,
-  onSimulateCrash,
   onProbeService,
   onClearLogs,
   pollIntervalSec,
@@ -216,11 +214,11 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
                   服务名称与角色
                 </th>
                 <th className="px-3 py-[7px] border-b border-slate-200 text-center">端口 / 协议</th>
-                <th className="px-3 py-[7px] border-b border-slate-200 text-center">PID 标识</th>
+                <th className="px-3 py-[7px] border-b border-slate-200 text-center">launchd 守护托管</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 text-center">存续健康状态</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 text-right">探活延迟 (ms)</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 text-right">内存占用</th>
-                <th className="px-3 py-[7px] border-b border-slate-200 text-right">运行时长</th>
+                <th className="px-3 py-[7px] border-b border-slate-200 text-left">事故隐患 / 运行备注</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 text-center">最后心跳时间</th>
                 <th className="px-3 py-[7px] border-b border-slate-200 text-right">治理操作</th>
               </tr>
@@ -265,9 +263,19 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
                       </span>
                     </td>
 
-                    {/* PID */}
-                    <td className="px-3 py-[7px] text-center font-mono text-slate-600">
-                      {srv.pid}
+                    {/* launchd Management Status */}
+                    <td className="px-3 py-[7px] text-center">
+                      {srv.isLaunchdManaged ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>launchd 托管</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
+                          <AlertTriangle className="w-3 h-3 text-rose-600" />
+                          <span>无守护 (高危)</span>
+                        </span>
+                      )}
                     </td>
 
                     {/* Status with Breathing Light */}
@@ -318,9 +326,15 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
                         : `${srv.memoryMb} MB`}
                     </td>
 
-                    {/* Uptime */}
-                    <td className="px-3 py-[7px] text-right font-mono text-slate-600">
-                      {srv.uptime}
+                    {/* Incident Note */}
+                    <td className="px-3 py-[7px] text-left max-w-[200px] truncate">
+                      {srv.incidentNote ? (
+                        <span className="text-[10px] text-rose-600 font-medium bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 truncate block" title={srv.incidentNote}>
+                          ⚠️ {srv.incidentNote}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-mono">运行平稳</span>
+                      )}
                     </td>
 
                     {/* Last Heartbeat */}
@@ -345,17 +359,6 @@ export const ServiceHealthDashboard: React.FC<ServiceHealthDashboardProps> = ({
                         >
                           <RotateCcw className="w-3 h-3" />
                           <span>{isDown ? '拉起' : '重启'}</span>
-                        </button>
-                        <button
-                          onClick={() => onSimulateCrash(srv.id)}
-                          className={`h-6.5 px-2 rounded-md border text-[10px] font-mono transition-colors ${
-                            isDown
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
-                          }`}
-                          title={isDown ? '恢复服务' : '模拟进程挂死，测试告警'}
-                        >
-                          {isDown ? '恢复' : '模拟崩溃'}
                         </button>
                       </div>
                     </td>

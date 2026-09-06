@@ -7,8 +7,6 @@ import {
   AgentSkill,
   WorkflowRegistryItem,
   WorkflowAuditLog,
-  ComputeMetrics,
-  QueuedTask,
 } from './types';
 import {
   INITIAL_SERVICES,
@@ -17,15 +15,12 @@ import {
   INITIAL_SKILLS,
   INITIAL_WORKFLOWS,
   INITIAL_AUDIT_LOGS,
-  INITIAL_COMPUTE_METRICS,
 } from './data/initialData';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
 import { ServiceHealthDashboard } from './components/ServiceHealthDashboard';
 import { AgentSkillCatalog } from './components/AgentSkillCatalog';
 import { WorkflowRegistry } from './components/WorkflowRegistry';
-import { ComputeTelemetryDashboard } from './components/ComputeTelemetryDashboard';
-import { ChaosSimulatorModal } from './components/ChaosSimulatorModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ExportReportModal } from './components/ExportReportModal';
 import { AgentConnectHubModal } from './components/AgentConnectHubModal';
@@ -36,34 +31,32 @@ import { soundManager } from './utils/audioAlert';
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('health');
 
-  // Core Data States (Light-Themed Enterprise Architecture)
+  // Core Data States (TYHOO / OpenClaw Architecture)
   const [services, setServices] = useState<LocalService[]>(() => {
-    const saved = localStorage.getItem('openclaw_services_v2');
+    const saved = localStorage.getItem('openclaw_services_v3');
     return saved ? JSON.parse(saved) : INITIAL_SERVICES;
   });
 
   const [logs, setLogs] = useState<HealthLogEntry[]>(() => {
-    const saved = localStorage.getItem('openclaw_health_logs_v2');
+    const saved = localStorage.getItem('openclaw_health_logs_v3');
     return saved ? JSON.parse(saved) : INITIAL_HEALTH_LOGS;
   });
 
   const [agents, setAgents] = useState<AgentAsset[]>(AGENT_LIST);
   const [skills, setSkills] = useState<AgentSkill[]>(() => {
-    const saved = localStorage.getItem('openclaw_skills_v2');
+    const saved = localStorage.getItem('openclaw_skills_v3');
     return saved ? JSON.parse(saved) : INITIAL_SKILLS;
   });
 
   const [workflows, setWorkflows] = useState<WorkflowRegistryItem[]>(() => {
-    const saved = localStorage.getItem('openclaw_workflows_v2');
+    const saved = localStorage.getItem('openclaw_workflows_v3');
     return saved ? JSON.parse(saved) : INITIAL_WORKFLOWS;
   });
 
   const [auditLogs, setAuditLogs] = useState<WorkflowAuditLog[]>(() => {
-    const saved = localStorage.getItem('openclaw_audit_logs_v2');
+    const saved = localStorage.getItem('openclaw_audit_logs_v3');
     return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
   });
-
-  const [computeMetrics, setComputeMetrics] = useState<ComputeMetrics>(INITIAL_COMPUTE_METRICS);
 
   // Configuration & States
   const [pollIntervalSec, setPollIntervalSec] = useState<number>(3);
@@ -74,7 +67,6 @@ export default function App() {
   const [autoHealEnabled, setAutoHealEnabled] = useState<boolean>(false);
 
   // Modals & Drawers
-  const [isChaosOpen, setIsChaosOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isAgentConnectOpen, setIsAgentConnectOpen] = useState<boolean>(false);
@@ -91,11 +83,11 @@ export default function App() {
   // Local storage persistence
   useEffect(() => {
     try {
-      localStorage.setItem('openclaw_services_v2', JSON.stringify(services));
-      localStorage.setItem('openclaw_health_logs_v2', JSON.stringify(logs.slice(0, 50)));
-      localStorage.setItem('openclaw_skills_v2', JSON.stringify(skills));
-      localStorage.setItem('openclaw_workflows_v2', JSON.stringify(workflows));
-      localStorage.setItem('openclaw_audit_logs_v2', JSON.stringify(auditLogs.slice(0, 50)));
+      localStorage.setItem('openclaw_services_v3', JSON.stringify(services));
+      localStorage.setItem('openclaw_health_logs_v3', JSON.stringify(logs.slice(0, 50)));
+      localStorage.setItem('openclaw_skills_v3', JSON.stringify(skills));
+      localStorage.setItem('openclaw_workflows_v3', JSON.stringify(workflows));
+      localStorage.setItem('openclaw_audit_logs_v3', JSON.stringify(auditLogs.slice(0, 50)));
     } catch {
       // ignore quota limits
     }
@@ -150,16 +142,6 @@ export default function App() {
       })
     );
 
-    setComputeMetrics((prev) => {
-      const tpsJitter = +(prev.tokensPerSec + (Math.random() * 3 - 1.5)).toFixed(1);
-      const isOver = prev.latencyP99Ms >= prev.peakLatencyThresholdMs;
-      return {
-        ...prev,
-        tokensPerSec: Math.max(80, tpsJitter),
-        isLatencyAlertTriggered: isOver,
-      };
-    });
-
     setTimeout(() => {
       setIsPolling(false);
     }, 350);
@@ -198,7 +180,7 @@ export default function App() {
         srv.id,
         srv.name,
         'info',
-        `【独立自愈调度】成功执行服务拉起命令，分配新 PID，心跳正常，无持久化数据丢失。`,
+        `【服务拉起调度】成功执行服务拉起命令，分配新 PID，心跳正常，无持久化数据丢失。`,
         10,
         false
       );
@@ -223,44 +205,8 @@ export default function App() {
         return s;
       })
     );
-    appendHealthLog('srv-sidecar', 'Supervisor', 'info', `批量拉起所有崩溃服务完毕。`, 5, false);
+    appendHealthLog('srv-supervisor', 'Supervisor', 'info', `批量拉起所有故障服务完毕。`, 5, false);
     soundManager.playSuccessPip();
-  };
-
-  // Simulate Crash Action
-  const handleSimulateCrash = (serviceId: string) => {
-    setServices((prev) =>
-      prev.map((s) => {
-        if (s.id === serviceId) {
-          const isDown = s.status === 'down';
-          return {
-            ...s,
-            status: isDown ? 'healthy' : 'down',
-            lastPingMs: isDown ? 14 : 0,
-            lastHeartbeat: isDown ? '刚刚 (恢复正常)' : '探活超时 (进程断开)',
-          };
-        }
-        return s;
-      })
-    );
-
-    const srv = services.find((s) => s.id === serviceId);
-    if (srv) {
-      if (srv.status !== 'down') {
-        appendHealthLog(
-          srv.id,
-          srv.name,
-          'fatal',
-          `【异常告警】服务非正常中断 (Connection Refused)！警告：若未落地刷盘存在丢数据危险！`,
-          0,
-          srv.isCritical
-        );
-        soundManager.playCriticalAlarm();
-      } else {
-        appendHealthLog(srv.id, srv.name, 'info', `服务已恢复在线存续。`, 12, false);
-        soundManager.playSuccessPip();
-      }
-    }
   };
 
   // Probe single service
@@ -278,7 +224,7 @@ export default function App() {
     }
   };
 
-  // Rescan Skills from Mac local directory
+  // Rescan Skills from Mac local 3 physical directories
   const handleRescanSkills = () => {
     setIsScanning(true);
     setTimeout(() => {
@@ -304,10 +250,10 @@ export default function App() {
       );
 
       appendHealthLog(
-        'srv-sidecar',
-        'Agent Scanner Engine',
+        'srv-scanner',
+        'OpenClaw Skill Scanner',
         'info',
-        `完成 11 个 Agent local skills 目录扫描，提取 35 项函数契约，严格遵循不复制全文原则。`,
+        `完成 16 个 Agent 目录与全局/企微插件扫描，共索引 78 项能力资产，严格遵循非侵入不复制全文原则。`,
         6,
         false
       );
@@ -409,152 +355,25 @@ export default function App() {
     );
   };
 
-  // Compute telemetry actions
-  const handleUpdateThreshold = (threshold: number) => {
-    setComputeMetrics((prev) => ({
-      ...prev,
-      peakLatencyThresholdMs: threshold,
-      isLatencyAlertTriggered: prev.latencyP99Ms >= threshold,
-    }));
-  };
-
-  const handleSimulateTaskQueueSpike = () => {
-    setComputeMetrics((prev) => {
-      const extraTasks: QueuedTask[] = [
-        {
-          id: `task-spike-${Date.now()}-1`,
-          title: 'ArchitectAgent: 深度拆解 4 级嵌套多模态流水线拓扑',
-          agentId: 'agent-01',
-          priority: 'P0',
-          queuedDurationSec: 12,
-          predictedWaitMs: 3800,
-          modelTarget: 'Local Qwen-2.5-Coder-32B (MPS)',
-          status: 'waiting',
-        },
-        {
-          id: `task-spike-${Date.now()}-2`,
-          title: 'DataMiner: 批量向量化 500 个切片 (显存挤压)',
-          agentId: 'agent-04',
-          priority: 'P1',
-          queuedDurationSec: 25,
-          predictedWaitMs: 4600,
-          modelTarget: 'Local BGE-M3 (MPS)',
-          status: 'throttled',
-        },
-      ];
-
-      const newLatencyP99 = 3850;
-      soundManager.playAlertChime();
-
-      return {
-        ...prev,
-        queuedTasks: prev.taskQueue.length + 2,
-        activeSlots: 8,
-        latencyP99Ms: newLatencyP99,
-        isLatencyAlertTriggered: true,
-        metalMpsUtilization: 94.2,
-        thermalState: 'Fair',
-        taskQueue: [...extraTasks, ...prev.taskQueue],
-      };
-    });
-  };
-
-  const handleEnqueueTask = (task: QueuedTask) => {
-    setComputeMetrics((prev) => ({
-      ...prev,
-      taskQueue: [task, ...prev.taskQueue],
-    }));
-  };
-
-  const handleRemoveTask = (taskId: string) => {
-    setComputeMetrics((prev) => ({
-      ...prev,
-      taskQueue: prev.taskQueue.filter((t) => t.id !== taskId),
-    }));
-  };
-
-  // Chaos Scenarios
-  const handleSimulateGatewayCrash = () => {
-    handleSimulateCrash('srv-gateway');
-  };
-
-  const handleSimulateVectorDbCrash = () => {
-    handleSimulateCrash('srv-vectordb');
-  };
-
-  const handleSimulateLatencySpike = () => {
-    handleSimulateTaskQueueSpike();
-  };
-
-  const handleSimulateSkillTamper = () => {
-    setSkills((prev) =>
-      prev.map((sk) => {
-        if (sk.name === 'ast_code_transform') {
-          return {
-            ...sk,
-            isModifiedRecently: true,
-            lastModified: '刚刚 (被 CodeSmith 本地热改)',
-            checksum: '99bf' + Math.random().toString(36).slice(2, 6),
-          };
-        }
-        return sk;
-      })
-    );
-    appendHealthLog(
-      'srv-sidecar',
-      'Directory Scanner',
-      'warn',
-      `检测到 ast_code_transform.py 签名校验和变更，已标记为最新修改。`,
-      6,
-      false
-    );
-    soundManager.playAlertChime();
-  };
-
-  const handleRestoreAllHealthy = () => {
-    setServices((prev) =>
-      prev.map((s) => ({
-        ...s,
-        status: 'healthy',
-        lastPingMs: 12,
-        lastHeartbeat: '刚刚 (正常应答)',
-      }))
-    );
-    setComputeMetrics((prev) => ({
-      ...prev,
-      latencyP99Ms: 2940,
-      isLatencyAlertTriggered: false,
-      activeSlots: 5,
-      metalMpsUtilization: 68.4,
-      thermalState: 'Nominal',
-    }));
-    appendHealthLog('srv-sidecar', 'Supervisor', 'info', `全系统健康状态已全部重置恢复。`, 4, false);
-    soundManager.playSuccessPip();
-  };
-
   const conflictSkillCount = 2;
 
   return (
     <div className="bg-slate-50 min-h-screen font-sans text-slate-900 overflow-hidden flex flex-col">
-      {/* 1. Collapsible 72px Fixed Left Sidebar (Section 1.2) */}
+      {/* 1. Collapsible 72px Fixed Left Sidebar */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         services={services}
         isPolling={isPolling}
-        soundEnabled={soundEnabled}
-        setSoundEnabled={setSoundEnabled}
         onRefreshNow={executeHeartbeatPulse}
-        onOpenChaos={() => setIsChaosOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onExportReport={() => setIsExportOpen(true)}
         onOpenAgentConnect={() => setIsAgentConnectOpen(true)}
         conflictSkillCount={conflictSkillCount}
-        hasLatencyAlert={computeMetrics.isLatencyAlertTriggered}
         pollIntervalSec={pollIntervalSec}
       />
 
-      {/* 2. Main Workspace Offset by 72px (Section 1.2: pl-[72px] flex flex-col flex-1 h-screen) */}
+      {/* 2. Main Workspace Offset by 72px */}
       <div className="pl-[72px] flex flex-col flex-1 min-w-0 relative h-screen bg-slate-50 overflow-hidden">
         {/* Top Header Command Toolbar */}
         <TopHeader
@@ -563,13 +382,12 @@ export default function App() {
           isPolling={isPolling}
           pollIntervalSec={pollIntervalSec}
           onRefreshNow={executeHeartbeatPulse}
-          onOpenChaos={() => setIsChaosOpen(true)}
           onExportReport={() => setIsExportOpen(true)}
           onRestartAllDown={handleRestartAllDown}
           onOpenAgentConnect={() => setIsAgentConnectOpen(true)}
         />
 
-        {/* Scrollable Work Area (Section 1.2: px-5 lg:px-6 pt-2.5 pb-4 overflow-auto) */}
+        {/* Scrollable Work Area */}
         <main className="flex-1 px-5 lg:px-6 pt-2.5 pb-4 overflow-y-auto space-y-4">
           {/* Tab 1: 服务健康总览 */}
           {activeTab === 'health' && (
@@ -577,7 +395,6 @@ export default function App() {
               services={services}
               logs={logs}
               onRestartService={handleRestartService}
-              onSimulateCrash={handleSimulateCrash}
               onProbeService={handleProbeService}
               onClearLogs={() => setLogs([])}
               pollIntervalSec={pollIntervalSec}
@@ -608,17 +425,6 @@ export default function App() {
               onToggleWorkflowStatus={handleToggleWorkflowStatus}
             />
           )}
-
-          {/* Tab 4: 全局算力监控看板 */}
-          {activeTab === 'telemetry' && (
-            <ComputeTelemetryDashboard
-              metrics={computeMetrics}
-              onUpdateThreshold={handleUpdateThreshold}
-              onSimulateTaskQueueSpike={handleSimulateTaskQueueSpike}
-              onEnqueueTask={handleEnqueueTask}
-              onRemoveTask={handleRemoveTask}
-            />
-          )}
         </main>
 
         {/* macOS Style High-Density Status Footer */}
@@ -626,25 +432,25 @@ export default function App() {
           <div className="flex items-center space-x-3">
             <span className="flex items-center gap-1.5 text-slate-700 font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              本地 Mac 独立工作台监控在线
+              TYHOO / OpenClaw 本地工作台在线
             </span>
             <span>•</span>
-            <span className="text-slate-400">基准目录: {openClawPath}</span>
+            <span className="text-slate-400">本地路径: {openClawPath}</span>
             <span>•</span>
             <span className="text-blue-600 font-medium">原则：不复制业务全文 · 仅登记元数据与契约</span>
           </div>
 
           <div className="flex items-center space-x-3">
-            <span>Apple Silicon Metal: 就绪</span>
+            <span>16 Agent / 5 业务流</span>
             <span>•</span>
-            <span>轮询心跳: 每 {pollIntervalSec}s</span>
+            <span>心跳巡检: 每 {pollIntervalSec}s</span>
             <span>•</span>
-            <span className="text-emerald-600 font-bold">Out-of-band 解耦保障</span>
+            <span className="text-emerald-600 font-bold">8901 邮件防断流保障</span>
           </div>
         </footer>
       </div>
 
-      {/* Right Sliding Detail Drawer for Agent (Section 5.2) */}
+      {/* Right Sliding Detail Drawer for Agent */}
       <AgentDetailDrawer
         agent={selectedDrawerAgent}
         skills={skills}
@@ -662,17 +468,6 @@ export default function App() {
         agent={agents.find((a) => a.id === selectedModalSkill?.agentId)}
         isOpen={Boolean(selectedModalSkill)}
         onClose={() => setSelectedModalSkill(null)}
-      />
-
-      {/* Chaos Simulator Modal */}
-      <ChaosSimulatorModal
-        isOpen={isChaosOpen}
-        onClose={() => setIsChaosOpen(false)}
-        onSimulateGatewayCrash={handleSimulateGatewayCrash}
-        onSimulateVectorDbCrash={handleSimulateVectorDbCrash}
-        onSimulateLatencySpike={handleSimulateLatencySpike}
-        onSimulateSkillTamper={handleSimulateSkillTamper}
-        onRestoreAllHealthy={handleRestoreAllHealthy}
       />
 
       {/* Settings Modal */}
