@@ -86,6 +86,7 @@ export interface WorkflowStep {
   deliverableContract: string; // Human readable spec of expected output
   estimatedTimeoutSec: number;
   status: StepExecutionStatus;
+  role?: 'plan' | 'review' | 'deliver' | 'support'; // 角色性质: 🎯计划/🔍审核/📦交付/🔧支持(流程图节点标注用)
   lastRunAt?: string;
   errorNote?: string;
 }
