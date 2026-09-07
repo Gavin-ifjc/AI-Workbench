@@ -60,7 +60,8 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
     const text = replyInputs[email.id]?.trim();
     if (!text) return;
 
-    const agent = assignedAgents[email.id] || email.suggestedAgent || '苏念';
+    // 批复统一答复给元元,由元元内部调度执行 agent(王总不做指派)
+    const agent = '元元';
     setSubmittingId(email.id);
 
     setTimeout(() => {
@@ -243,9 +244,24 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
               >
                 {/* Card Main Body: Compact Spacing */}
                 <div className="p-3 space-y-2">
-                  {/* Row 1: Type Tag + ID + Date */}
+                  {/* Row 1: Direction Badge + Type Tag + Date */}
                   <div className="flex items-center justify-between gap-1 text-[11px]">
                     <div className="flex items-center space-x-1.5 min-w-0">
+                      {/* 方向徽章: 客户来件/我方发出/我方转发 */}
+                      {(() => {
+                        const dir = (item as any).direction || '';
+                        if (!dir) return null;
+                        const style = dir === '客户来件'
+                          ? 'bg-sky-100 text-sky-800 border-sky-300'
+                          : dir === '我方发出'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-violet-100 text-violet-800 border-violet-300';
+                        return (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${style}`}>
+                            {dir === '客户来件' ? '⬇ 客户来件' : dir === '我方发出' ? '⬆ 我方发出' : '⇄ 我方转发'}
+                          </span>
+                        );
+                      })()}
                       <span
                         className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0 ${
                           item.notificationType.includes('商机')
@@ -259,21 +275,6 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
                       >
                         <Mail className="w-2.5 h-2.5" />
                         {item.notificationType}
-                      </span>
-
-                      <span className="font-mono text-slate-500 truncate flex items-center gap-0.5 text-[10.5px]">
-                        ID:<span className="font-semibold text-slate-800 select-all">{item.id}</span>
-                        <button
-                          onClick={() => handleCopy(item.id, `id-${item.id}`)}
-                          className="text-slate-400 hover:text-slate-700 p-0.5 transition-colors"
-                          title="复制ID"
-                        >
-                          {copiedId === `id-${item.id}` ? (
-                            <Check className="w-2.5 h-2.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-2.5 h-2.5" />
-                          )}
-                        </button>
                       </span>
 
                       {item.priority === 'critical' && (
@@ -293,10 +294,10 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
                   <div className="flex items-start justify-between gap-1.5">
                     <h3
                       className="text-xs font-bold text-slate-900 leading-snug line-clamp-1 hover:line-clamp-2 transition-all cursor-pointer"
-                      title={item.subject}
+                      title={(item as any).projectName || item.subject}
                       onClick={() => toggleContentExpand(item.id)}
                     >
-                      {item.subject}
+                      {(item as any).projectName || item.subject}
                     </h3>
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded font-semibold shrink-0 flex items-center gap-1 ${
@@ -338,13 +339,10 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
                     </p>
                   </div>
 
-                  {/* Row 5: Inline Metadata (Archive & Agent) */}
+                  {/* Row 5: Inline Metadata (仅归档;责任Agent不展示——执行调度由元元内部安排) */}
                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono px-0.5">
-                    <span className="truncate max-w-[60%]">
+                    <span className="truncate max-w-[100%]">
                       归档: <span className="text-slate-600">{item.archiveStatus}</span>
-                    </span>
-                    <span className="shrink-0">
-                      责任 Agent: <strong className="text-slate-700 font-sans">{item.suggestedAgent || '苏念'}</strong>
                     </span>
                   </div>
 
@@ -451,22 +449,6 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
                           </button>
                         </div>
 
-                        <div className="flex items-center space-x-1 shrink-0">
-                          <span className="text-[10px] text-slate-400">指派:</span>
-                          <select
-                            value={currentAssignedAgent}
-                            onChange={(e) =>
-                              setAssignedAgents((prev) => ({ ...prev, [item.id]: e.target.value }))
-                            }
-                            className="text-[10px] py-0.5 px-1 bg-white border border-slate-200 rounded font-semibold text-slate-700 outline-none"
-                          >
-                            {agents.map((ag) => (
-                              <option key={ag.id} value={ag.name}>
-                                {ag.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
                       </div>
 
                       {/* Reply Input Bar + Send Button in single row */}
@@ -519,7 +501,6 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
                   <th className="py-2 px-3 w-36">邮件ID</th>
                   <th className="py-2 px-3">邮件主题 / 简报</th>
                   <th className="py-2 px-3 w-32">接收时间</th>
-                  <th className="py-2 px-3 w-28">责任 Agent</th>
                   <th className="py-2 px-3 w-56 text-right">王总批复闭环操作</th>
                 </tr>
               </thead>
@@ -549,19 +530,20 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
                           >
                             {isPending ? '待处理' : '已闭环'}
                           </span>
+                          <span className="text-[10px] font-bold truncate" style={{
+                            color: (item as any).direction === '我方发出' ? '#047857' : (item as any).direction === '我方转发' ? '#6d28d9' : '#0369a1'
+                          }}>
+                            {(item as any).direction === '我方发出' ? '⬆ 我方发出' : (item as any).direction === '我方转发' ? '⇄ 我方转发' : (item as any).direction === '客户来件' ? '⬇ 客户来件' : ''}
+                          </span>
                           <span className="text-[10px] text-slate-500 truncate">
                             {item.notificationType}
                           </span>
                         </div>
                       </td>
 
-                      <td className="py-2 px-3 font-mono text-[10.5px]">
-                        <span className="text-slate-800 font-semibold">{item.id}</span>
-                      </td>
-
                       <td className="py-2 px-3">
                         <div className="max-w-xl">
-                          <div className="font-bold text-slate-900 line-clamp-1">{item.subject}</div>
+                          <div className="font-bold text-slate-900 line-clamp-1">{((item as any).projectName || item.subject)}</div>
                           <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
                             {item.nextStepSuggestion}
                           </div>
@@ -575,22 +557,6 @@ export const EmailNotificationBoard: React.FC<EmailNotificationBoardProps> = ({
 
                       <td className="py-2 px-3 text-slate-400 font-mono text-[10.5px] whitespace-nowrap">
                         {item.date}
-                      </td>
-
-                      <td className="py-2 px-3">
-                        <select
-                          value={currentAssignedAgent}
-                          onChange={(e) =>
-                            setAssignedAgents((prev) => ({ ...prev, [item.id]: e.target.value }))
-                          }
-                          className="text-[11px] py-0.5 px-1.5 bg-white border border-slate-200 rounded font-semibold text-slate-700 outline-none"
-                        >
-                          {agents.map((ag) => (
-                            <option key={ag.id} value={ag.name}>
-                              {ag.name}
-                            </option>
-                          ))}
-                        </select>
                       </td>
 
                       <td className="py-2 px-3 text-right">

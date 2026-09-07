@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import net from 'net';
 import fs from 'fs';
+import { execFile } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import {
   INITIAL_SERVICES,
@@ -49,6 +50,8 @@ import {
   clearAllData,
   AgentSessionOutboundMessage,
 } from './server/db';
+import { buildInitialAssets } from './server/scanner';
+import { main as seedServicesIfEmpty } from './server/seed-services';
 
 // Persistent Repository (Backed by SQLite3 on local disk in ./data/openclaw_hub.db)
 let services: LocalService[] = getAllServices();
@@ -114,7 +117,19 @@ function scanLocalSkillsIfAvailable() {
   try {
     if (fs.existsSync(localSkillsBase)) {
       console.log(`[OpenClaw Workbench] 探测到本地物理目录: ${localSkillsBase}，正在挂载真实文件...`);
-      // 可在此追加本地动态读取目录逻辑
+      // 用真实文件系统扫描覆盖空壳 agents/skills(来自 scanner.ts)
+      try {
+        const { agents: realAgents, skills: realSkills } = buildInitialAssets();
+        if (realAgents.length > 0) {
+          agents = realAgents as unknown as AgentAsset[];
+          skills = realSkills as unknown as AgentSkill[];
+          console.log(`[OpenClaw Workbench] ✅ 已载入 ${agents.length} 个真实Agent / ${skills.length} 个真实Skill(扫描自工作区)`);
+        } else {
+          console.log('[OpenClaw Workbench] 扫描返回空,保留空骨架(等接入)');
+        }
+      } catch (scanErr) {
+        console.error('[OpenClaw Workbench] 真实扫描失败,回落到空壳:', (scanErr as Error).message);
+      }
     }
   } catch (e) {
     // 静默降级，继续使用标准种子数据
@@ -129,6 +144,17 @@ async function startServer() {
   app.use(express.json());
 
   scanLocalSkillsIfAvailable();
+
+  // 服务监管:启动时若 services 空则自动 seed 真实本地服务清单(云端BMS/IFJC不监控)
+  if (services.length === 0) {
+    try {
+      seedServicesIfEmpty();
+      services = getAllServices();
+      console.log(`[OpenClaw Workbench] ✅ 已seed ${services.length} 个本地服务(云端不监控)`);
+    } catch (se) {
+      console.error('[OpenClaw Workbench] 服务seed失败:', (se as Error).message);
+    }
+  }
 
   // ==========================================
   // 1. HEALTH & SERVICE PROBING APIS
@@ -284,8 +310,18 @@ async function startServer() {
           srv.lastPingMs = 0;
           srv.lastHeartbeat = '探测未响应 (端口未监听)';
         }
+      } else if (srv.protocol === 'PROC' && srv.launchdLabel) {
+        // 本地 launchd 进程类服务(无端口): 用 launchctl print 检查该 label 是否存活
+        const alive = await new Promise<boolean>((resolve) => {
+          const { execFile } = require('child_process') as typeof import('child_process');
+          const uid = process.getuid ? process.getuid() : 501;
+          execFile('/bin/launchctl', ['print', `gui/${uid}/${srv.launchdLabel}`], { timeout: 6000 }, (err: Error | null) => resolve(!err));
+        });
+        srv.status = alive ? 'healthy' : 'down';
+        srv.lastPingMs = 0;
+        srv.lastHeartbeat = alive ? '刚刚 (launchd 进程存活)' : 'launchd 未找到该进程 (已挂)';
       } else {
-        srv.lastHeartbeat = '云端服务通道正常';
+        srv.lastHeartbeat = '未探测(无端口无launchd)';
       }
       upsertService(srv);
     }
@@ -297,10 +333,38 @@ async function startServer() {
     if (!srv) {
       return res.status(404).json({ error: 'Service not found' });
     }
+    // 本进程(3000)不能自杀式重启,提示用launchd
+    if (srv.port === 3000) {
+      return res.status(400).json({
+        error: '本工作台进程无法在自身内重启。请在宿主机执行: launchctl kickstart -k gui/$(id -u)/ai.openclaw.workbench-hub',
+      });
+    }
+    // launchd托管的服务: 真实 kickstart 拉起
+    if (srv.isLaunchdManaged && srv.launchdLabel) {
+      const { execFile } = require('child_process') as typeof import('child_process');
+      const uid = process.getuid ? process.getuid() : 501;
+      execFile('/bin/launchctl', ['kickstart', '-k', `gui/${uid}/${srv.launchdLabel}`], { timeout: 10000 }, (err: Error | null) => {
+        if (err) {
+          console.error(`[服务重启失败] ${srv.name}:`, err.message);
+          srv.status = 'down';
+          srv.lastHeartbeat = `重启指令失败: ${err.message}`;
+          upsertService(srv);
+          return res.status(500).json({ error: `重启指令失败: ${err.message}` });
+        }
+        srv.status = 'healthy';
+        srv.lastPingMs = 0;
+        srv.uptime = '已下发launchctl kickstart';
+        srv.lastHeartbeat = '刚刚 (launchctl kickstart 已拉起)';
+        upsertService(srv);
+        return res.json({ serviceId: srv.id, status: 'restart_issued', message: `已真实下发 launchctl kickstart -k gui/${uid}/${srv.launchdLabel}` });
+      });
+      return;
+    }
+    // 非launchd服务: 只标记状态,提示需人工
     srv.status = 'healthy';
     srv.lastPingMs = 2;
-    srv.uptime = '已下发重启指令';
-    srv.lastHeartbeat = '刚刚 (手动拉起)';
+    srv.uptime = '已标记(需人工确认)';
+    srv.lastHeartbeat = '刚刚 (手动标记,非托管服务需人工拉起)';
     srv.pid = 0;
     upsertService(srv);
 
@@ -678,11 +742,24 @@ async function startServer() {
       recipient,
       suggestedAgent,
       priority,
+      projectName,
+      direction: directionHint,
     } = req.body;
 
     if (!subject || !content) {
       return res.status(400).json({ error: 'subject and content are required' });
     }
+
+    // 邮件方向判定: 显式传入优先 > 发件人域名 > 主题线索
+    const detectDirection = (): string => {
+      if (directionHint) return directionHint;
+      const s = sender || '';
+      if (/tyhoogroup\.com|tyhoopipeline\.com/.test(s)) return '我方发出';
+      const subj = subject || '';
+      if (/^\s*(FW|Fwd|转发)[:：]/i.test(subj)) return '我方转发';
+      return '客户来件';
+    };
+    const direction = detectDirection();
 
     const now = new Date();
     const dateStr = date || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -703,9 +780,11 @@ async function startServer() {
       recipient: recipient || 'gavin.wang@internal',
       suggestedAgent: suggestedAgent || '苏念',
       priority: priority || 'high',
+      projectName: projectName || '',
+      direction,
       replies: existingIndex >= 0 ? emailNotifications[existingIndex].replies : [],
       rawSource: 'OpenClaw 8901 邮件扫描探针',
-    };
+    } as EmailNotification;
 
     if (existingIndex >= 0) {
       emailNotifications[existingIndex] = newRecord;
@@ -766,7 +845,8 @@ async function startServer() {
     }
 
     const author = repliedBy || '王总';
-    const agent = assignedAgent || email.suggestedAgent || '苏念';
+    // 批复统一答复给元元(邮件通知推送方),由元元内部调度执行 agent;王总不直接指派
+    const agent = '元元';
     const sessionId = sentToSessionId || `session_agent_${agent}_chat_main`;
     const nowStr = new Date().toLocaleString();
 
@@ -783,7 +863,7 @@ async function startServer() {
 ────────────────────────────────────
 王总批复处理意见：
 “${content.trim()}”
-指派执行 Agent: ${agent}
+调度责任: 元元统一安排执行 (王总不直接指派具体agent)
 批复时间: ${nowStr}
 同步到 Agent 会话: ${sessionId} (200 OK 已闭环)`;
 
@@ -855,6 +935,30 @@ async function startServer() {
     insertHealthLog(healthReplyLog);
     healthLogs.unshift(healthReplyLog);
     if (healthLogs.length > 100) healthLogs.pop();
+
+    // ===== 真实毫秒级投递: 将批复指令即时发到'企业微信-邮件'会话 (main 企微对端) =====
+    // 王总点批复的瞬间,就此实时送达,不依赖后续轮询
+    const wecomTarget = 'gavin.wang@tyhoopipeline.com';
+    const cliPath = '/Users/agents/.openclaw/tmp/agent-cli/openclaw';
+    let realDelivery = 'pending';
+    try {
+      // execFile 异步发送,不阻塞响应;失败不阻断主流程(记日志)
+      execFile(cliPath, [
+        'message', 'send', '--channel', 'wecom', '--account', 'main',
+        '--target', wecomTarget, '--message', citationSnippet,
+      ], { timeout: 15000 }, (err, stdout, stderr) => {
+        if (err) {
+          console.error('[批复投递失败]', err.message);
+          realDelivery = 'failed:' + (err.message || '');
+        } else {
+          realDelivery = 'delivered';
+          console.log('[批复投递成功] 邮件', email.id, '批复已实时发至', wecomTarget);
+        }
+      });
+    } catch (dvErr) {
+      console.error('[批复投递异常]', (dvErr as Error).message);
+      realDelivery = 'error:' + ((dvErr as Error).message || '');
+    }
 
     res.json({
       success: true,

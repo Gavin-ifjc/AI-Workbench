@@ -17,3 +17,4 @@ data/
 *.db-wal
 *.sqlite
 *.sqlite3
+.openclaw-sync/

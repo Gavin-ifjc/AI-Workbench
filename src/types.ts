@@ -4,7 +4,7 @@ export interface LocalService {
   id: string;
   name: string;
   port: number;
-  protocol: 'HTTP' | 'HTTPS' | 'TCP' | 'IPC' | 'WebSocket';
+  protocol: 'HTTP' | 'HTTPS' | 'TCP' | 'IPC' | 'WebSocket' | 'PROC';
   path: string;
   targetUrl?: string;
   status: ServiceStatus;
@@ -149,4 +149,6 @@ export interface EmailNotification {
   priority?: 'critical' | 'high' | 'normal';
   replies: EmailReplyRecord[];
   rawSource?: string;
+  projectName?: string; // 业务系统/台账里的正式项目名称(有LEAD号时由入库解析填入,前端标题优先显示)
+  direction?: string; // 邮件方向: '客户来件'|'我方发出'|'我方转发' (入库时解析,判定优先级:显式传入>域名>主题线索)
 }

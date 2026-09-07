@@ -205,6 +205,24 @@ export default function App() {
       })
       .catch(() => {});
 
+    fetch('/api/v1/agents')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.agents) && data.agents.length > 0) {
+          setAgents(data.agents);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/v1/skills')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.skills) && data.skills.length > 0) {
+          setSkills(data.skills);
+        }
+      })
+      .catch(() => {});
+
     fetchDbStatus();
   }, [fetchDbStatus]);
 
@@ -592,7 +610,7 @@ export default function App() {
 ────────────────────────────────────
 王总批复处理意见：
 “${replyText.trim()}”
-指派执行 Agent: ${assignedAgent}
+调度责任: 元元统一安排执行 (王总不直接指派具体agent)
 批复时间: ${nowStr}
 同步到 Agent 会话: ${sessionId} (200 OK 已闭环派单)`;
 

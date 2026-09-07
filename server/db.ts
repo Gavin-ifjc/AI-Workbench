@@ -78,6 +78,7 @@ db.exec(`
     suggestedAgent TEXT DEFAULT '',
     priority TEXT DEFAULT 'medium',
     rawSource TEXT DEFAULT '',
+    projectName TEXT DEFAULT '',
     replies_json TEXT DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -139,6 +140,21 @@ db.exec(`
 `);
 
 console.log(`[OpenClaw Hub SQLite] 本地 SQLite 存储初始化就绪: ${DB_PATH}`);
+
+// ---- Schema 迁移：旧库补列(幂等) ----
+function ensureColumn(table: string, column: string, ddl: string) {
+  try {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+      console.log(`[OpenClaw Hub SQLite] 迁移: ${table} 新增列 ${column}`);
+    }
+  } catch (e) {
+    console.error(`[OpenClaw Hub SQLite] 迁移失败 ${table}.${column}:`, (e as Error).message);
+  }
+}
+ensureColumn('email_notifications', 'projectName', "TEXT DEFAULT ''");
+ensureColumn('email_notifications', 'direction', "TEXT DEFAULT ''");
 
 // =========================================================================
 // 1. SERVICES (服务状态)
@@ -262,11 +278,11 @@ const upsertEmailStmt = db.prepare(`
   INSERT INTO email_notifications (
     id, notificationType, date, subject, content, archiveStatus,
     ledgerStatus, nextStepSuggestion, sender, recipient, suggestedAgent,
-    priority, rawSource, replies_json, created_at, updated_at
+    priority, rawSource, projectName, direction, replies_json, created_at, updated_at
   ) VALUES (
     ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?
   )
   ON CONFLICT(id) DO UPDATE SET
     notificationType = excluded.notificationType,
@@ -281,6 +297,8 @@ const upsertEmailStmt = db.prepare(`
     suggestedAgent = excluded.suggestedAgent,
     priority = excluded.priority,
     rawSource = excluded.rawSource,
+    projectName = excluded.projectName,
+    direction = excluded.direction,
     replies_json = excluded.replies_json,
     updated_at = excluded.updated_at
 `);
@@ -301,6 +319,8 @@ export function upsertEmailNotification(e: EmailNotification): void {
     e.suggestedAgent || '',
     e.priority || 'normal',
     e.rawSource || '',
+    (e as any).projectName || '',
+    (e as any).direction || '',
     JSON.stringify(e.replies || []),
     nowStr,
     nowStr
@@ -330,6 +350,8 @@ export function getAllEmailNotifications(): EmailNotification[] {
       suggestedAgent: r.suggestedAgent,
       priority: (r.priority || 'normal') as 'critical' | 'high' | 'normal',
       rawSource: r.rawSource,
+      projectName: r.projectName || '',
+      direction: r.direction || '',
       replies,
     };
   });
