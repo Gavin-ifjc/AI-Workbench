@@ -9,7 +9,7 @@ import { WorkflowRegistryItem } from '../src/types';
 // 角色性质标注: plan=🎯计划 review=🔍审核 deliver=📦交付 support=🔧支持
 const S = (
   id: string, order: number, name: string, assignedAgentId: string,
-  deliverableContract: string, role: string, timeoutSec = 86400,
+  deliverableContract: string, role: 'plan' | 'review' | 'deliver' | 'support', timeoutSec = 86400,
   status: 'IDLE' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'BLOCKED' = 'IDLE'
 ) => ({ id, order, name, assignedAgentId, deliverableContract, role, estimatedTimeoutSec: timeoutSec, status, lastRunAt: undefined, errorNote: undefined });
 

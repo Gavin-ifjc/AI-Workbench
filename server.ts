@@ -52,6 +52,7 @@ import {
 } from './server/db';
 import { buildInitialAssets } from './server/scanner';
 import { main as seedServicesIfEmpty } from './server/seed-services';
+import { main as seedWorkflowsIfEmpty } from './server/seed-workflows';
 
 // Persistent Repository (Backed by SQLite3 on local disk in ./data/openclaw_hub.db)
 let services: LocalService[] = getAllServices();
@@ -145,21 +146,15 @@ async function startServer() {
 
   scanLocalSkillsIfAvailable();
 
-  // 服务监管:启动时若 services 空则自动 seed 真实本地服务清单(云端BMS/IFJC不监控)
-  if (services.length === 0) {
-    try {
-      seedServicesIfEmpty();
-      services = getAllServices();
-      console.log(`[OpenClaw Workbench] ✅ 已seed ${services.length} 个本地服务(云端不监控)`);
-    } catch (se) {
-      console.error('[OpenClaw Workbench] 服务seed失败:', (se as Error).message);
-    }
-  }
+  // 零模拟数据纯净模式：保持完全由外部真实服务/外部调用接入，启动时不自动填充任何模拟数据
+  console.log(
+    `[OpenClaw Workbench] 零模拟数据基准模式已激活 (Services: ${services.length}, Workflows: ${workflows.length})`
+  );
 
   // ==========================================
   // 1. HEALTH & SERVICE PROBING APIS
   // ==========================================
-  app.get('/api/v1/health', (req, res) => {
+  const handleHealth = (req: express.Request, res: express.Response) => {
     const downCount = services.filter((s) => s.status === 'down').length;
     res.json({
       status: downCount > 0 ? 'degraded' : 'healthy',
@@ -175,22 +170,28 @@ async function startServer() {
       openClawBaseDir: '/Users/agents/.openclaw',
       activeExternalAgents: Object.keys(externalAgentHeartbeats).length,
     });
-  });
+  };
+  app.get('/api/health', handleHealth);
+  app.get('/api/v1/health', handleHealth);
 
-  app.get('/api/v1/services', (req, res) => {
+  const handleGetServices = (req: express.Request, res: express.Response) => {
     res.json({
       services,
       count: services.length,
     });
-  });
+  };
+  app.get('/api/v1/services', handleGetServices);
+  app.get('/api/services', handleGetServices);
 
-  app.get('/api/v1/services/:id', (req, res) => {
+  const handleGetServiceById = (req: express.Request, res: express.Response) => {
     const srv = services.find((s) => s.id === req.params.id);
     if (!srv) {
       return res.status(404).json({ error: 'Service not found' });
     }
     res.json(srv);
-  });
+  };
+  app.get('/api/v1/services/:id', handleGetServiceById);
+  app.get('/api/services/:id', handleGetServiceById);
 
   // 注册或更新服务状态 (持久化写入 SQLite)
   app.post('/api/v1/services', (req, res) => {
@@ -313,7 +314,6 @@ async function startServer() {
       } else if (srv.protocol === 'PROC' && srv.launchdLabel) {
         // 本地 launchd 进程类服务(无端口): 用 launchctl print 检查该 label 是否存活
         const alive = await new Promise<boolean>((resolve) => {
-          const { execFile } = require('child_process') as typeof import('child_process');
           const uid = process.getuid ? process.getuid() : 501;
           execFile('/bin/launchctl', ['print', `gui/${uid}/${srv.launchdLabel}`], { timeout: 6000 }, (err: Error | null) => resolve(!err));
         });
@@ -341,7 +341,6 @@ async function startServer() {
     }
     // launchd托管的服务: 真实 kickstart 拉起
     if (srv.isLaunchdManaged && srv.launchdLabel) {
-      const { execFile } = require('child_process') as typeof import('child_process');
       const uid = process.getuid ? process.getuid() : 501;
       execFile('/bin/launchctl', ['kickstart', '-k', `gui/${uid}/${srv.launchdLabel}`], { timeout: 10000 }, (err: Error | null) => {
         if (err) {
@@ -489,7 +488,7 @@ async function startServer() {
   // ==========================================
   // 3. WORKFLOW REGISTRY & AUDIT LOG APIS
   // ==========================================
-  app.get('/api/v1/workflows', (req, res) => {
+  const handleGetWorkflows = (req: express.Request, res: express.Response) => {
     res.json({
       workflows,
       count: workflows.length,
@@ -499,16 +498,22 @@ async function startServer() {
         '防篡改留痕：任何转派与规则修订强制生成 Diff',
       ],
     });
-  });
+  };
 
-  app.get('/api/v1/workflows/:codeOrId', (req, res) => {
+  app.get('/api/v1/workflows', handleGetWorkflows);
+  app.get('/api/workflows', handleGetWorkflows);
+
+  const handleGetWorkflowById = (req: express.Request, res: express.Response) => {
     const key = req.params.codeOrId;
     const wf = workflows.find((w) => w.code === key || w.id === key);
     if (!wf) {
       return res.status(404).json({ error: 'Workflow not found' });
     }
     res.json(wf);
-  });
+  };
+
+  app.get('/api/v1/workflows/:codeOrId', handleGetWorkflowById);
+  app.get('/api/workflows/:codeOrId', handleGetWorkflowById);
 
   // 创建或更新业务台账 (持久化写入 SQLite)
   app.post('/api/v1/workflows', (req, res) => {
@@ -597,13 +602,16 @@ async function startServer() {
     res.json({ success: true, workflow: updatedWf });
   });
 
-  app.get('/api/v1/audit/logs', (req, res) => {
+  const handleGetAuditLogs = (req: express.Request, res: express.Response) => {
     const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
     res.json({
       auditLogs: auditLogs.slice(0, limit),
       total: auditLogs.length,
     });
-  });
+  };
+  app.get('/api/v1/audit/logs', handleGetAuditLogs);
+  app.get('/api/v1/audit-logs', handleGetAuditLogs);
+  app.get('/api/audit-logs', handleGetAuditLogs);
 
   // External AI Agent writes audit diff / rule revision
   app.post('/api/v1/audit/log', (req, res) => {
@@ -692,7 +700,7 @@ async function startServer() {
   // 5. EMAIL NOTIFICATION & CLOSED-LOOP DISPATCH APIS
   // ==========================================
   // 获取邮件通知清单
-  app.get('/api/v1/email-notifications', (req, res) => {
+  const handleGetEmailNotifications = (req: express.Request, res: express.Response) => {
     const { status, search, type } = req.query;
     let filtered = [...emailNotifications];
 
@@ -725,7 +733,11 @@ async function startServer() {
       channel: '8901 Mail Scanner Probe & OpenClaw Agent Hook',
       notice: '每条邮件通知支持王总批复并自动引用回传至 Agent Chat Session 形成闭环',
     });
-  });
+  };
+  app.get('/api/v1/email-notifications', handleGetEmailNotifications);
+  app.get('/api/v1/emails', handleGetEmailNotifications);
+  app.get('/api/email-notifications', handleGetEmailNotifications);
+  app.get('/api/emails', handleGetEmailNotifications);
 
   // Agent 或邮件扫描探针自动写入/同步新邮件通知
   app.post('/api/v1/email-notifications', (req, res) => {

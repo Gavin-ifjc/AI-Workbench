@@ -37,6 +37,12 @@ export default function App() {
   // Clean legacy local storage keys with mock data
   try {
     [
+      'openclaw_emails_v5',
+      'openclaw_services_v5',
+      'openclaw_health_logs_v5',
+      'openclaw_audit_logs_v5',
+      'openclaw_workflows_v5',
+      'openclaw_skills_v5',
       'openclaw_emails_v4',
       'openclaw_services_v4',
       'openclaw_health_logs_v4',
@@ -57,34 +63,34 @@ export default function App() {
 
   // Core Data States (OpenClaw Hub Architecture - Clean zero-mock baseline)
   const [emailNotifications, setEmailNotifications] = useState<EmailNotification[]>(() => {
-    const saved = localStorage.getItem('openclaw_emails_v5');
-    return saved ? JSON.parse(saved) : INITIAL_EMAIL_NOTIFICATIONS;
+    const saved = localStorage.getItem('openclaw_emails_v6');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [services, setServices] = useState<LocalService[]>(() => {
-    const saved = localStorage.getItem('openclaw_services_v5');
-    return saved ? JSON.parse(saved) : INITIAL_SERVICES;
+    const saved = localStorage.getItem('openclaw_services_v6');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [logs, setLogs] = useState<HealthLogEntry[]>(() => {
-    const saved = localStorage.getItem('openclaw_health_logs_v5');
-    return saved ? JSON.parse(saved) : INITIAL_HEALTH_LOGS;
+    const saved = localStorage.getItem('openclaw_health_logs_v6');
+    return saved ? JSON.parse(saved) : [];
   });
 
-  const [agents, setAgents] = useState<AgentAsset[]>(AGENT_LIST);
+  const [agents, setAgents] = useState<AgentAsset[]>([]);
   const [skills, setSkills] = useState<AgentSkill[]>(() => {
-    const saved = localStorage.getItem('openclaw_skills_v5');
-    return saved ? JSON.parse(saved) : INITIAL_SKILLS;
+    const saved = localStorage.getItem('openclaw_skills_v6');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [workflows, setWorkflows] = useState<WorkflowRegistryItem[]>(() => {
-    const saved = localStorage.getItem('openclaw_workflows_v5');
-    return saved ? JSON.parse(saved) : INITIAL_WORKFLOWS;
+    const saved = localStorage.getItem('openclaw_workflows_v6');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [auditLogs, setAuditLogs] = useState<WorkflowAuditLog[]>(() => {
-    const saved = localStorage.getItem('openclaw_audit_logs_v5');
-    return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
+    const saved = localStorage.getItem('openclaw_audit_logs_v6');
+    return saved ? JSON.parse(saved) : [];
   });
 
   // Configuration & States
@@ -163,7 +169,7 @@ export default function App() {
     fetch('/api/v1/services')
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.services) && data.services.length > 0) {
+        if (data && Array.isArray(data.services)) {
           setServices(data.services);
         }
       })
@@ -181,7 +187,7 @@ export default function App() {
     fetch('/api/v1/workflows')
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.workflows) && data.workflows.length > 0) {
+        if (data && Array.isArray(data.workflows)) {
           setWorkflows(data.workflows);
         }
       })
@@ -190,7 +196,7 @@ export default function App() {
     fetch('/api/v1/audit/logs?limit=50')
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.auditLogs) && data.auditLogs.length > 0) {
+        if (data && Array.isArray(data.auditLogs)) {
           setAuditLogs(data.auditLogs);
         }
       })
@@ -199,7 +205,7 @@ export default function App() {
     fetch('/api/v1/health-logs?limit=50')
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.logs) && data.logs.length > 0) {
+        if (data && Array.isArray(data.logs)) {
           setLogs(data.logs);
         }
       })
@@ -208,7 +214,7 @@ export default function App() {
     fetch('/api/v1/agents')
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.agents) && data.agents.length > 0) {
+        if (data && Array.isArray(data.agents)) {
           setAgents(data.agents);
         }
       })
@@ -217,7 +223,7 @@ export default function App() {
     fetch('/api/v1/skills')
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.skills) && data.skills.length > 0) {
+        if (data && Array.isArray(data.skills)) {
           setSkills(data.skills);
         }
       })
@@ -229,12 +235,12 @@ export default function App() {
   // Local storage persistence fallback
   useEffect(() => {
     try {
-      localStorage.setItem('openclaw_emails_v5', JSON.stringify(emailNotifications));
-      localStorage.setItem('openclaw_services_v5', JSON.stringify(services));
-      localStorage.setItem('openclaw_health_logs_v5', JSON.stringify(logs.slice(0, 50)));
-      localStorage.setItem('openclaw_skills_v5', JSON.stringify(skills));
-      localStorage.setItem('openclaw_workflows_v5', JSON.stringify(workflows));
-      localStorage.setItem('openclaw_audit_logs_v5', JSON.stringify(auditLogs.slice(0, 50)));
+      localStorage.setItem('openclaw_emails_v6', JSON.stringify(emailNotifications));
+      localStorage.setItem('openclaw_services_v6', JSON.stringify(services));
+      localStorage.setItem('openclaw_health_logs_v6', JSON.stringify(logs.slice(0, 50)));
+      localStorage.setItem('openclaw_skills_v6', JSON.stringify(skills));
+      localStorage.setItem('openclaw_workflows_v6', JSON.stringify(workflows));
+      localStorage.setItem('openclaw_audit_logs_v6', JSON.stringify(auditLogs.slice(0, 50)));
     } catch {
       // ignore quota limits
     }
